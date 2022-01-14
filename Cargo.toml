@@ -1,19 +1,22 @@
 [package]
 name = "teensycore"
 authors = ["Joshua Cole"]
-version = "0.1.0"
-edition = "2021"
+version = "0.0.1"
+license = "MIT"
+repository = "https://github.com/SharpCoder/teensycore"
 description = "A kernel for the teensy4.0 microcontroller"
+keywords = ["kernel", "teensy", "teensy-4", "embedded", "baremetal"]
+edition = "2021"
+categories = ["embedded", "hardware-support", "no-std", "]
 crate-type = ["staticlib"]
+
+[profile.release]
+opt-level = 3
+panic = "abort"
 
 [profile.dev]
 opt-level = 3
 panic = "abort"
-
-[target.thumbv7em-none-eabihf]
-objcopy = { path = "arm-none-eabi-objcopy" }
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 
