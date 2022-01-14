@@ -4,6 +4,7 @@ authors = ["Joshua Cole"]
 version = "0.0.3"
 license = "MIT"
 repository = "https://github.com/SharpCoder/teensycore"
+documentation = "https://docs.rs/crate/teensycore/latest"
 description = "A kernel for the teensy4.0 microcontroller"
 keywords = ["kernel", "teensy", "teensy-4", "embedded", "baremetal"]
 edition = "2021"
