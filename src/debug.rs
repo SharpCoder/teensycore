@@ -11,8 +11,13 @@ pub struct BlinkConfig {
 
 #[derive(Copy, Clone)]
 pub enum Speed {
+    /// One second
     Slow = (crate::MS_TO_NANO * 1000u64) as isize,
+
+    /// 350ms
     Fast = (crate::MS_TO_NANO * 350u64) as isize,
+
+    /// 700ms
     Normal = (crate::MS_TO_NANO * 700u64) as isize,
 }
 
@@ -21,14 +26,18 @@ pub static mut BLINK_CONFIG: BlinkConfig = BlinkConfig {
     remaining_count: 0,
 };
 
+/// Turn LED 13 on.
 pub fn blink_led_on() {
     pin_out(13, Power::High);
 }
 
+/// Turn LED 13 off.
 pub fn blink_led_off() {
     pin_out(13, Power::Low);
 }
 
+/// Blink LED 13 a particular number of times
+/// at a particular speed.
 pub fn blink(count: u8, speed: Speed) {
     unsafe {
         if BLINK_CONFIG.remaining_count == 0 || speed as isize != BLINK_CONFIG.speed as isize {
@@ -38,6 +47,8 @@ pub fn blink(count: u8, speed: Speed) {
     }
 }
 
+/// This will add 1 to whatever blink count is currently
+/// active.
 pub fn blink_accumulate() {
     unsafe {
         BLINK_CONFIG.speed = Speed::Fast;
@@ -45,12 +56,8 @@ pub fn blink_accumulate() {
     }
 }
 
-/***
- * This method will flash LED 13
- * using hardware-level waits
- * (hard wait) instead of relying
- * on gates.
- * */
+/// This method will flash LED 13 using hardware-level waits
+/// (hard wait) instead of relying on Gates.
 pub fn blink_hardware(count: u8) {
     for _ in 0 .. count {
         blink_led_on();
@@ -69,6 +76,8 @@ pub fn blink_custom(on_time: u64, off_time: u64) {
     wait_ns(off_time);
 }
 
+/// Write out a u32, in hex format, along with a string of data
+/// to Uart4. This is useful for debugging memory addresses.
 pub fn debug_hex(hex: u32, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write(SerioDevice::Debug, b"0x");
@@ -78,6 +87,7 @@ pub fn debug_hex(hex: u32, message: &[u8]) {
     }
 }
 
+/// Write out a u64 number and a string of data to Uart4
 pub fn debug_u64(val: u64, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write_vec(SerioDevice::Debug, &itoa_u64(val));
@@ -86,6 +96,7 @@ pub fn debug_u64(val: u64, message: &[u8]) {
     }
 }
 
+/// Write out a u32 number and a string of data to Uart4
 pub fn debug_u32(val: u32, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write_vec(SerioDevice::Debug, &to_base(val as u64, 10));
@@ -94,6 +105,7 @@ pub fn debug_u32(val: u32, message: &[u8]) {
     }
 }
 
+/// Write out a string of data to Uart4
 pub fn debug_str(message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write(SerioDevice::Debug, message);

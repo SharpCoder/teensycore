@@ -1,6 +1,36 @@
-/***
- * On the Teensy 4.0, it has 3 periodic timers. The source clock is 100MHz (maybe)
-**/
+//! This module provides access to the periodic timer peripheral.
+//! 
+//! The Teensy-4.0 has 4 individual periodic timers. It is important
+//! to note however that the kernel itself allocates Timer 0 and Timer 1
+//! for itself, to keep track of uptime.
+//! 
+//! System defaults configure the periodic timer to use the IPG clock
+//! which, in normal system usage, is 132MHz - or - 7.5ns per clock cycle.
+//! 
+//! 
+//! Periodic timers are capable of counting a specific number of clock
+//! cycles and then issuing an interrupt.
+//! 
+//! Here is an example of using it:
+//! 
+//! ```
+//! pit_configure(&PeriodicTimerSource::Timer2, PITConfig {
+//!     chained: false,
+//!     irq_en: true,
+//!     en: false,
+//! });
+//! 
+//! pit_load_value(&PeriodicTimerSource::Timer2, 0x7F2_8155);
+//! pit_restart();
+//! 
+//! irq_attach(Irq::PeriodicTimer, handle_pit_irq);
+//! irq_enable(Irq::PeriodicTimer);
+//! 
+//! 
+//! fn handle_pit_irq() {
+//!     debug_str(b"ping pong!");
+//! }
+//! ```
 use core::arch::asm;
 
 use crate::phys::addrs;
@@ -111,6 +141,7 @@ pub fn pit_load_value(source: &PeriodicTimerSource, value: u32) {
     assign(addr, value);
 }
 
+/// Read how many clock cycles have occured since the system was turned on.
 pub fn pit_read_lifetime() -> u64 {
     let lifetime_high: u64 = read_word(addrs::PIT + 0xE0) as u64;
     let lifetime_low: u64 = read_word(addrs::PIT + 0xE4) as u64;

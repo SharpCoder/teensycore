@@ -13,16 +13,25 @@ use crate::phys::addrs;
 use crate::phys::*;
 use crate::phys::gpio::*;
 
+/// The mode indicating whether a pin is an Input or an Output
 pub enum Mode {
     Output,
     Input,
 }
 
+/// The signal used to drive the pin. If it is HIGH the pin
+/// will receive power. If it is low, the pin will be grounded.
 pub enum Power {
     High,
     Low,
 }
 
+/// The gpio pad mux configuration. 
+/// 
+/// On the IMXRT, each gpio slot can be reconfigured to point
+/// to a different peripheral. This enum defines which peripheral
+/// is active. Follow the IMXRT documentation for specifics
+/// on which alt setting maps to which pad.
 pub enum Alt {
     Alt0 = 0x0,
     Alt1 = 0x1,
@@ -32,6 +41,8 @@ pub enum Alt {
     Alt5 = 0x5,
 }
 
+/// Whether the pin will have a pull-down resistor or 
+/// a pull-up resistor.
 pub enum PullUpDown {
     PullDown100k = 0x00,
     PullUp47k = 0x01,
@@ -116,11 +127,17 @@ const PIN_MUX: [u32;  40] = [
 ];
 
 
+/// Reconfigure the pad which a particular gpio pin is
+/// using.
 pub fn pin_mux_config(pin: usize, alt: Alt) {
     let addr = PIN_MUX[pin];
     assign(addr, (read_word(addr) & !0x7) | alt as u32);
 }
 
+/// Configure all aspects of the pad.
+/// 
+/// This includes the speed, the resistance, the drive strength,
+/// enabling hysterisis, and more.
 pub fn pin_pad_config(pin: usize, config: PadConfig) {
     // -0x1F0 appears to universally be the difference
     // between the MUX_CTRL_PAD and the PAD_CTRL_PAD

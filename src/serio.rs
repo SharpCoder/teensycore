@@ -1,13 +1,35 @@
-// There are some unused variables that are nice to have
-// for the future when this package gets fuller.
+//! This module represents the serial communication protocol
+//! based on UART physical hardware.
+//! 
+//! Typical operations in the kernel do not require direct uart access.
+//! Instead, the `serio` interface has been devised which abstracts
+//! much of the nuance away.
+//! 
+//! On the Teensy4.0, Uart6 is what most would think of as the "Primary" uart.
+//! It is located on pins 0 and 1.
+//! 
+//! It is worth noting that the debug module of this kernel leverages 
+//! SerioDevice::Uart4 to output any debug data.
+//! 
+//! Simple usage
+//! 
+//! ```
+//! serial_init(SerioDevice::Uart6);
+//! serial_write(SerioDevice::Uart6, b"Hello, world!\r\n");
+//! 
+//! while serial_available(SerioDevice::Uart6) > 0 {
+//!     match serial_read(SerioDevice::Uart6) {
+//!         None => {}
+//!         Some(byte) => {
+//!             // Do something with this byte
+//!         }
+//!     }
+//! }
+//! ```
+
 #![allow(unused)]
 
 use crate::debug::*;
-/** 
- * This module represents the serial communication protocol
- * based on UART physical hardware. For simplicity, it is tightly
- * coupled to a specific uart device.
-*/
 use crate::phys::uart::*;
 use crate::phys::irq::*;
 use crate::phys::pins::*;
@@ -452,31 +474,10 @@ pub fn serial_clear_rx(device: SerioDevice) {
     let uart = get_uart_interface(device);
     uart.clear_rx_buffer();
 }
+
 pub fn serial_baud(device: SerioDevice, rate: u32) {
     let uart = get_uart_interface(device);
     uart_baud_rate(uart.device, rate);
-}
-
-pub fn serio_baud(rate: u32) {
-    uart_baud_rate(Device::Uart6, rate);
-}
-
-pub fn serial_pause() {
-    get_uart_interface(SerioDevice::Uart1).pause();
-    get_uart_interface(SerioDevice::Uart2).pause();
-    get_uart_interface(SerioDevice::Uart3).pause();
-    get_uart_interface(SerioDevice::Uart4).pause();
-    get_uart_interface(SerioDevice::Uart5).pause();
-    get_uart_interface(SerioDevice::Uart6).pause();
-}
-
-pub fn serial_resume() {
-    get_uart_interface(SerioDevice::Uart1).handle_irq();
-    get_uart_interface(SerioDevice::Uart2).handle_irq();
-    get_uart_interface(SerioDevice::Uart3).handle_irq();
-    get_uart_interface(SerioDevice::Uart4).handle_irq();
-    get_uart_interface(SerioDevice::Uart5).handle_irq();
-    get_uart_interface(SerioDevice::Uart6).handle_irq();
 }
 
 pub fn serio_handle_irq() {

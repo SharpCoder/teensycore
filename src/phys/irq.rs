@@ -10,6 +10,8 @@ use crate::phys::{
     set_bit,
  };
 
+// On the teensy, it's actually closer to 158 interrupts
+// This will be adjusted in the future.
 const MAX_SUPPORTED_IRQ: usize = 256;
 
 #[repr(C)]
@@ -71,6 +73,8 @@ pub enum Irq {
 
 static mut IRQ_DISABLE_COUNT: usize = 0;
 
+/// System-level command to resume processing interrupts
+/// across the device.
 pub fn enable_interrupts() {
     unsafe {
         if IRQ_DISABLE_COUNT > 0 {
@@ -83,6 +87,8 @@ pub fn enable_interrupts() {
     }
 }
 
+/// System-level command to stop processing interrupts
+/// across the device.
 pub fn disable_interrupts() {
     unsafe {
         IRQ_DISABLE_COUNT += 1;
@@ -90,23 +96,23 @@ pub fn disable_interrupts() {
     }
 }
 
-// Return the current address stored
-// in the NVIC
+/// Return the current address stored
+/// in the NVIC
 pub fn irq_addr() -> u32 {
     return read_word(0xe000ed08);
 }
 
-// Return the total size of the IVT
+/// Return the total size of the IVT
 pub fn irq_size() -> u32 {
     return core::mem::size_of::<IrqTable>() as u32;
 }
 
-// Get the current IVT wherever it may be stored
+/// Get the current IVT wherever it may be stored
 pub fn get_ivt() -> *mut IrqTable {
     return irq_addr() as *mut IrqTable
 }
 
-// Enable a specific interrupt
+/// Enable a specific interrupt
 pub fn irq_enable(irq_number: Irq) {
     let num = irq_number as u32;
     let bank = num / 32;
@@ -117,7 +123,7 @@ pub fn irq_enable(irq_number: Irq) {
     assign(addr, next_value);
 }
 
-// Disable a specific interrupt
+/// Disable a specific interrupt
 pub fn irq_disable(irq_number: Irq) {
     let num = irq_number as u32;
     let bank = num / 32;
@@ -128,6 +134,9 @@ pub fn irq_disable(irq_number: Irq) {
     assign(addr, next_value);
 }
 
+/// Set a particular Irq with a given priority.
+/// 
+/// The lower the priority, the more important the interrupt will be.
 pub fn irq_priority(irq_number: Irq, priority: u8) {
     let num = irq_number as u32;
     put_irq_priority(num, priority);
@@ -198,6 +207,9 @@ fn put_irq(irq_number: usize, ptr: Fn) {
     update_ivt();
 }
 
+/// Set a particular IRQ with a given priority.
+/// The lower the priority value, the more important
+/// the interrupt will be.
 fn put_irq_priority(irq_number: u32, priority: u8) {
     let addr = addrs::NVIC_IRQ_PRIORITY_REG + irq_number;
     assign_8(addr, priority);
@@ -216,20 +228,20 @@ pub fn fill_irq(func: Fn) {
     update_ivt();
 }
 
-// Public method for attaching an interrupt to an
-// enum-gated IRQ source.
+/// Public method for attaching an interrupt to an
+/// enum-gated IRQ source.
 pub fn irq_attach(irq_number: Irq, func: Fn) {
     put_irq(irq_number as usize, func);
 }
 
-// Some kind of hard-fault, typically
-// this is a catastrophic function that hangs
-// the program.
+/// Some kind of hard-fault, typically
+/// this is a catastrophic function that hangs
+/// the program.
 pub fn fault_handler() {
     crate::err(crate::PanicType::Hardfault);
 }
 
-// An un-implemented interrupt
+/// An un-implemented interrupt
 pub fn noop() {
     unsafe {
         asm!("nop");
