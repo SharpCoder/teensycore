@@ -1,0 +1,21 @@
+[package]
+name = "teensycore"
+authors = ["Joshua Cole"]
+version = "0.1.0"
+edition = "2021"
+description = "A kernel for the teensy4.0 microcontroller"
+crate-type = ["staticlib"]
+
+[profile.dev]
+opt-level = 3
+panic = "abort"
+
+[target.thumbv7em-none-eabihf]
+objcopy = { path = "arm-none-eabi-objcopy" }
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+cc = "1.0"
