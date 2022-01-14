@@ -1,7 +1,14 @@
-/**
-    This file is dedicated to gpio over any discreet pin for the teensy 4.0
-    as numbered in the Arduino style (and board diagrams).
-*/
+//! This module provides access to controlling discreet pins
+//! over gpio.
+//! 
+//! Typically you need to configure the pin first, and then
+//! interact with it. The following example will configure
+//! pin 13 as an output and provide power to it:
+//! 
+//! ```
+//! pin_mode(13, Mode::Output);
+//! pin_out(13, Power::High);
+//! ```
 use crate::phys::addrs;
 use crate::phys::*;
 use crate::phys::gpio::*;
@@ -132,7 +139,7 @@ pub fn pin_pad_config(pin: usize, config: PadConfig) {
     assign(addr, value);
 }
 
-/** This method will mux the pin */
+/// This method will configure the pin as an input or an output
 pub fn pin_mode(pin: usize, mode: Mode) {
     gpio_speed(&PIN_TO_GPIO_PIN[pin], MuxSpeed::Fast);
     // gpio_clear(&PIN_TO_GPIO_PIN[pin], 0x1 << PIN_BITS[pin]);
@@ -152,7 +159,7 @@ pub fn pin_mode(pin: usize, mode: Mode) {
     }
 }
 
-/** This method will output a high or low signal to the pin */
+/// This method will output a high or low signal to the pin
 pub fn pin_out(pin: usize, power: Power) {
     let mask = 0x1 << PIN_BITS[pin];
     match power {
@@ -165,7 +172,7 @@ pub fn pin_out(pin: usize, power: Power) {
     }
 }
 
-// This method is a digital read of the specific pin
+/// This method is a digital read of the specific pin
 pub fn pin_read(pin: usize) -> u32 {
     let mask = 0x1 << PIN_BITS[pin];
     return gpio_read(&PIN_TO_GPIO_PIN[pin], mask);

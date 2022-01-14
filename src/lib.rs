@@ -1,3 +1,27 @@
+//! A kernel for teensy-4.0 microcontroller.
+//! 
+//! This crate provides all the resources necessary to
+//! begin interfacing with the teensy-4.0. To get started,
+//! you simply need to use the main! macro. This will perform
+//! a number of chores for you including the following:
+//! 
+//!  - Initialize uart, xbar, gpio, system clock
+//!  - Enable interrupts
+//!  - Add panic handling
+//!  - Verify memory access
+//!  - Enable FPU
+//! 
+//! 
+//! ```
+//! #![feature(lang_items)]
+//! #![crate_type = "staticlib"]
+//! #![no_std]
+//!
+//! teensycore::main!({
+//!     /* Code here */
+//! })
+//! ```
+
 #![feature(lang_items, fn_traits)]
 #![crate_type = "staticlib"]
 #![no_std]
@@ -22,17 +46,15 @@ use system::vector::*;
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
 
-#[derive(Copy, Clone)]
-pub struct Box<T : Clone + Copy> {
-    reference: T,
-}
-
-impl <T : Clone + Copy> Box<T> {
-    pub fn new(reference: T) -> Self {
-        return Box { reference: reference };
-    }
-}
-
+/// This is the primary macro necessary to bootstrap your application.
+/// It takes a code block that will be used as the entrypoint to your
+/// logic.
+/// 
+/// ```
+/// teensycore::main!({
+///     /* Application logic here */
+/// })
+/// ```
 #[macro_export]
 macro_rules! main {
     ($app_code: block) => {
@@ -95,19 +117,20 @@ macro_rules! main {
     }
 }
 
-
-#[derive(Copy, Clone)]
-pub struct SystemMessage {
-    pub topic: String,
-    pub content: String,
-}
-
 pub trait Task {
     fn new() -> Self;
     fn init(&mut self);
     fn system_loop(&mut self);
 }
 
+/// Waits for a specific amount of nanoseconds.
+/// 
+/// You can compose this with `S_TO_NANOS` or `MS_TO_NANOS`
+/// for easier control over the time.
+/// 
+/// ```
+/// wait_ns(S_TO_NANOS * 1);
+/// ```
 pub fn wait_ns(nano: u64) {
     unsafe {
         let origin = clock::nanos();
@@ -118,15 +141,24 @@ pub fn wait_ns(nano: u64) {
     }
 }
 
+/// This method will intiate a pendsv interrupt
 pub fn pendsv() {
     unsafe {
         *((0xE000ED04) as *mut u32) = 0x10000000;
     }
 }
 
+/// Data Memory Barrier
 pub fn dsb() {
     unsafe {
         asm!("dsb");
+    }
+}
+
+/// Instruction Synchronization Barrier
+pub fn isb() {
+    unsafe {
+        asm!("isb");
     }
 }
 
@@ -161,7 +193,7 @@ pub fn err(mode: PanicType) {
 }
 
 #[no_mangle]
-pub fn oob() {
+fn oob() {
     err(PanicType::Oob);
 }
 
