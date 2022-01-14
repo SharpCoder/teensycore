@@ -1,7 +1,7 @@
 [package]
 name = "teensycore"
 authors = ["Joshua Cole"]
-version = "0.0.1"
+version = "0.0.2"
 license = "MIT"
 repository = "https://github.com/SharpCoder/teensycore"
 description = "A kernel for the teensy4.0 microcontroller"
