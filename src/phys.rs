@@ -21,11 +21,11 @@ pub enum Dir {
 
 // Enable all physical clocks that we need
 pub fn phys_clocks_en() {
-    gpio::gpio_start_clock();
-    uart::uart_start_clock();
-    dma::dma_start_clock();
-    xbar::xbar_start_clock();
     periodic_timers::pit_start_clock();
+    uart::uart_start_clock();
+    gpio::gpio_start_clock();
+    xbar::xbar_start_clock();
+    dma::dma_start_clock();
 }
 
 pub fn write_byte(address: u32, value: u8) {

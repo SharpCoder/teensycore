@@ -61,7 +61,7 @@ void startup() {
     mmio32(0xE000ED08) = addr;
 
     // Branch to main
-    __asm__ volatile("bl main");
+    __asm__ volatile("b main");
 }
 
 

@@ -5,12 +5,12 @@ use crate::phys::*;
 use crate::phys::periodic_timers::*;
 
 pub fn clock_init() {
+    // Setup clock
+    periodic_timers::pit_start_clock();
+    
     // // Undo clock gating
     assign(addrs::CCM_CCGR1, read_word(addrs::CCM_CCGR1) | (0x3 << 12));
     
-    // Select 150MHz clock
-    assign(addrs::CCM_CSCMR1, read_word(addrs::CCM_CSCMR1) & (0x1 << 6));
-
     // Set CTRL 0
     pit_configure(&PeriodicTimerSource::Timer1, PITConfig {
         chained: true,
@@ -37,5 +37,5 @@ pub fn clock_init() {
 
 pub fn nanos() -> u64 {
     let base = pit_read_lifetime();
-    return base * 7;
+    return base * 14;
 }

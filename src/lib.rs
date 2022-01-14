@@ -22,10 +22,6 @@ use system::vector::*;
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
 
-pub static mut GATES: BTreeMap::<u32, u32> = BTreeMap {
-    root: None,
-};
-
 #[derive(Copy, Clone)]
 pub struct Box<T : Clone + Copy> {
     reference: T,
@@ -46,7 +42,13 @@ macro_rules! main {
         use teensycore::phys::irq::*;
         use teensycore::serio::*;
         use teensycore::mem::*;
+        use teensycore::system::map::*;
         
+        pub static mut GATES: BTreeMap::<u32, u32> = BTreeMap {
+            root: None,
+        };
+
+
         #[no_mangle]
         pub fn main() {
             // Initialize irq system, (disables all interrupts)
@@ -74,6 +76,12 @@ macro_rules! main {
             mem::memtest();
 
             $app_code
+
+            loop {
+                unsafe {
+                    asm!("nop");
+                }
+            }
         }
 
         #[lang = "eh_personality"]
