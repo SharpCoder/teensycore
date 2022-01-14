@@ -45,9 +45,10 @@ macro_rules! main {
         use teensycore::phys::*;
         use teensycore::phys::irq::*;
         use teensycore::serio::*;
-
+        use teensycore::mem::*;
+        
         #[no_mangle]
-        fn main() {
+        pub fn main() {
             // Initialize irq system, (disables all interrupts)
             disable_interrupts();
 
@@ -58,6 +59,9 @@ macro_rules! main {
             // which is also used for the wait implementation.
             clock_init();
 
+            // Make the LED pin an output
+            pin_mode(13, Mode::Output);
+
             // Setup serial
             serial_init(SerioDevice::Default);
             serial_init(SerioDevice::Debug);
@@ -65,9 +69,13 @@ macro_rules! main {
             // Enable interrupts across the system
             enable_interrupts();
             
+            // Memory test zeros out the entire boundary of
+            // accessible ram
+            mem::memtest();
+
             $app_code
         }
-        
+
         #[lang = "eh_personality"]
         #[no_mangle]
         pub extern fn eh_personality() {}#[panic_handler]

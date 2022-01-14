@@ -10,11 +10,11 @@ then
 fi
 
 # Build with cargo
-cargo build --release --target thumbv7em-none-eabihf
+cargo build --target thumbv7em-none-eabihf
 
 # Extract all projects in the workspace
 # and then build them into individual hex files
-DIR=$(cargo metadata | jq '.target_directory' | tr -d '"')/thumbv7em-none-eabihf/release
+DIR=$(cargo metadata | jq '.target_directory' | tr -d '"')/thumbv7em-none-eabihf/debug
 arr=$(ls $DIR/*.a)
 for elf in "${arr}"
 do :
