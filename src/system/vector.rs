@@ -287,7 +287,7 @@ impl <T: Clone + Copy> Vector<T> {
 
     pub fn join(&mut self, vec_to_join: &Vector<T>) -> &mut Self {
         let mut copy = vec_to_join.clone();
-        for index in 0 .. vec_to_join.size() {
+        for _ in 0 .. vec_to_join.size() {
             self.enqueue(copy.dequeue().unwrap());
         }
         copy.clear();

@@ -1,3 +1,5 @@
+//! Physical addresses to various
+//! peripherals and settings.
 #![allow(dead_code)]
 pub const NVIC_IRQ_ENABLE_REG: u32 = 0xE000E100;
 pub const NVIC_IRQ_CLEAR_REG: u32 = 0xE000E180;

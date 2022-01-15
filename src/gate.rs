@@ -137,11 +137,3 @@ impl Gate {
 
     }
 }
-
-fn base_cond_fn(_this: &mut Gate) -> bool {
-    return true;
-}
-
-fn base_fn() {
-    return;
-}

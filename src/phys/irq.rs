@@ -1,3 +1,17 @@
+//! Irq module deals with interrupt handling.
+//! 
+//! In this module you will find functions that help
+//! manaage interrupts. Here is an example of enabling
+//! interrupts for the periodic timer:
+//! 
+//! ```
+//! irq_attach(Irq::PeriodicTimer, handlde_timer_irq);
+//! irq_enable(Irq::PeriodicTimer);
+//! 
+//! fn handle_timer_irq() {
+//! 
+//! }
+//! ``` 
 #![allow(dead_code)]
 
 type Fn = fn();
@@ -98,17 +112,17 @@ pub fn disable_interrupts() {
 
 /// Return the current address stored
 /// in the NVIC
-pub fn irq_addr() -> u32 {
+fn irq_addr() -> u32 {
     return read_word(0xe000ed08);
 }
 
 /// Return the total size of the IVT
-pub fn irq_size() -> u32 {
+fn irq_size() -> u32 {
     return core::mem::size_of::<IrqTable>() as u32;
 }
 
 /// Get the current IVT wherever it may be stored
-pub fn get_ivt() -> *mut IrqTable {
+fn get_ivt() -> *mut IrqTable {
     return irq_addr() as *mut IrqTable
 }
 
@@ -167,7 +181,7 @@ the NVIC has the value I think it has.
 Spent like 20 hours debugging this. I am so done
 with magic memory locations changing around.
 */
-pub fn update_ivt() {
+fn update_ivt() {
     let ivt = get_ivt();
     unsafe {
         // We have no idea here
@@ -237,12 +251,12 @@ pub fn irq_attach(irq_number: Irq, func: Fn) {
 /// Some kind of hard-fault, typically
 /// this is a catastrophic function that hangs
 /// the program.
-pub fn fault_handler() {
+fn fault_handler() {
     crate::err(crate::PanicType::Hardfault);
 }
 
 /// An un-implemented interrupt
-pub fn noop() {
+fn noop() {
     unsafe {
         asm!("nop");
     }

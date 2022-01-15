@@ -1,3 +1,6 @@
+//! Phys module handles kernel-level 
+//! interfacing for physical, on-board peripherals.
+
 pub mod addrs;
 pub mod dma;
 pub mod gpio;

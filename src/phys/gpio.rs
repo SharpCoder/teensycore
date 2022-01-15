@@ -1,3 +1,5 @@
+//! Gpio is reponsible for coordinating input/output
+//! settings to various pins on the board.
 use crate::phys::addrs;
 use crate::phys::*;
 

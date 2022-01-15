@@ -35,13 +35,9 @@ pub mod serio;
 pub mod system;
 
 use core::arch::asm;
-use core::arch::global_asm;    
-use phys::*;
+use core::arch::global_asm;
 use phys::irq::*;
 use phys::pins::*;
-use system::map::*;
-use system::strings::*;
-use system::vector::*;
 
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
@@ -98,12 +94,6 @@ macro_rules! main {
             mem::memtest();
 
             $app_code
-
-            loop {
-                unsafe {
-                    asm!("nop");
-                }
-            }
         }
 
         #[lang = "eh_personality"]
