@@ -5,7 +5,9 @@
 //! interact with it. The following example will configure
 //! pin 13 as an output and provide power to it:
 //! 
-//! ```
+//! ```no_run
+//! use teensycore::phys::pins::*;
+//! 
 //! pin_mode(13, Mode::Output);
 //! pin_out(13, Power::High);
 //! ```

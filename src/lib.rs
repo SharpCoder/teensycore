@@ -10,21 +10,15 @@
 //!  - Add panic handling
 //!  - Verify memory access
 //!  - Enable FPU
-//! 
-//! 
-//! ```
-//! #![feature(lang_items)]
-//! #![crate_type = "staticlib"]
-//! #![no_std]
-//!
-//! teensycore::main!({
-//!     /* Code here */
-//! })
-//! ```
 
+#![no_std]
 #![feature(lang_items, fn_traits)]
 #![crate_type = "staticlib"]
-#![no_std]
+
+#[cfg(feature = "testing")]
+extern crate std;
+
+
 pub mod clock;
 pub mod debug;
 pub mod gate;
@@ -45,12 +39,6 @@ pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;
 /// This is the primary macro necessary to bootstrap your application.
 /// It takes a code block that will be used as the entrypoint to your
 /// logic.
-/// 
-/// ```
-/// teensycore::main!({
-///     /* Application logic here */
-/// })
-/// ```
 #[macro_export]
 macro_rules! main {
     ($app_code: block) => {
@@ -113,21 +101,40 @@ pub trait Task {
     fn system_loop(&mut self);
 }
 
+#[cfg(not(feature = "testing"))]
+#[macro_export]
+macro_rules! assembly {
+    ($asm: tt) => {
+        unsafe {
+            asm!($asm);
+        }
+    }
+}
+
+
+
+#[cfg(feature = "testing")]
+#[macro_export]
+macro_rules! assembly {
+    ($asm: tt) => {
+
+    }
+}
+
 /// Waits for a specific amount of nanoseconds.
 /// 
 /// You can compose this with `S_TO_NANOS` or `MS_TO_NANOS`
 /// for easier control over the time.
 /// 
-/// ```
-/// wait_ns(S_TO_NANOS * 1);
+/// ```no_run
+/// use teensycore::*;
+/// wait_ns(S_TO_NANO * 1);
 /// ```
 pub fn wait_ns(nano: u64) {
-    unsafe {
-        let origin = clock::nanos();
-        let target = nano;
-        while (origin + target) > clock::nanos() {
-            asm!("nop");
-        }
+    let origin = clock::nanos();
+    let target = nano;
+    while (origin + target) > clock::nanos() {
+        assembly!("nop");
     }
 }
 
@@ -138,18 +145,15 @@ pub fn pendsv() {
     }
 }
 
+
 /// Data Memory Barrier
 pub fn dsb() {
-    unsafe {
-        asm!("dsb");
-    }
+    assembly!("dsb");
 }
 
 /// Instruction Synchronization Barrier
 pub fn isb() {
-    unsafe {
-        asm!("isb");
-    }
+    assembly!("isb");
 }
 
 pub enum PanicType {
@@ -190,14 +194,14 @@ fn oob() {
 /// This function returns a u32 containing the
 /// program counter of the line of code which
 /// invokes this function.
+/// 
 pub fn code_hash() -> u32 {
     let result = 0;
-    unsafe {
-        asm!("mov r0, lr");
-    }
+    assembly!("mov r0, lr");
     return result;
 }
 
+#[cfg(not(feature = "testing"))]
 global_asm!("
     _ZN4core9panicking18panic_bounds_check17h9048f255eeb8dcc3E:
         bl oob

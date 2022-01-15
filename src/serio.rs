@@ -13,7 +13,9 @@
 //! 
 //! Simple usage
 //! 
-//! ```
+//! ```no_run
+//! use teensycore::serio::*;
+//! 
 //! serial_init(SerioDevice::Uart6);
 //! serial_write(SerioDevice::Uart6, b"Hello, world!\r\n");
 //! 

@@ -13,7 +13,11 @@
 //! 
 //! Here is an example of using it:
 //! 
-//! ```
+//! ```no_run
+//! use teensycore::debug::*;
+//! use teensycore::phys::periodic_timers::*;
+//! use teensycore::phys::irq::*;
+//! 
 //! pit_configure(&PeriodicTimerSource::Timer2, PITConfig {
 //!     chained: false,
 //!     irq_en: true,
@@ -21,7 +25,7 @@
 //! });
 //! 
 //! pit_load_value(&PeriodicTimerSource::Timer2, 0x7F2_8155);
-//! pit_restart();
+//! pit_restart(&PeriodicTimerSource::Timer2);
 //! 
 //! irq_attach(Irq::PeriodicTimer, handle_pit_irq);
 //! irq_enable(Irq::PeriodicTimer);
@@ -94,20 +98,15 @@ pub fn pit_restart(source: &PeriodicTimerSource) {
         irq_en: irq_en,
         en: false,
     });
-    unsafe {
-        asm!("nop");
-        crate::dsb();
-    }
+    crate::assembly!("nop");
+    crate::dsb();
     pit_configure(source, PITConfig {
         chained: chained,
         irq_en: irq_en,
         en: true,
     });
-    unsafe {
-        asm!("nop");
-        crate::dsb();
-    }
-
+    crate::assembly!("nop");
+    crate::dsb();
 }
 
 /** This method starts the clock source generation */

@@ -4,8 +4,10 @@
 //! manaage interrupts. Here is an example of enabling
 //! interrupts for the periodic timer:
 //! 
-//! ```
-//! irq_attach(Irq::PeriodicTimer, handlde_timer_irq);
+//! ```no_run
+//! use teensycore::phys::irq::*;
+//! 
+//! irq_attach(Irq::PeriodicTimer, handle_timer_irq);
 //! irq_enable(Irq::PeriodicTimer);
 //! 
 //! fn handle_timer_irq() {
@@ -16,13 +18,13 @@
 
 type Fn = fn();
 use core::arch::asm;
-use crate::phys::{ 
+use crate::{phys::{ 
     addrs,
     assign,
     assign_8,
     read_word,
     set_bit,
- };
+ }, assembly};
 
 // On the teensy, it's actually closer to 158 interrupts
 // This will be adjusted in the future.
@@ -89,25 +91,28 @@ static mut IRQ_DISABLE_COUNT: usize = 0;
 
 /// System-level command to resume processing interrupts
 /// across the device.
+/// 
 pub fn enable_interrupts() {
     unsafe {
         if IRQ_DISABLE_COUNT > 0 {
             IRQ_DISABLE_COUNT -= 1;
         }
+    }
 
-        if IRQ_DISABLE_COUNT == 0 {
-            asm!("CPSIE i");
-        }
+    if unsafe { IRQ_DISABLE_COUNT } == 0 {
+        assembly!("CPSIE i");            
     }
 }
 
 /// System-level command to stop processing interrupts
 /// across the device.
+/// 
 pub fn disable_interrupts() {
     unsafe {
         IRQ_DISABLE_COUNT += 1;
-        asm!("CPSID i");
     }
+    
+    assembly!("CPSID i");
 }
 
 /// Return the current address stored
@@ -257,7 +262,5 @@ fn fault_handler() {
 
 /// An un-implemented interrupt
 fn noop() {
-    unsafe {
-        asm!("nop");
-    }
+    assembly!("nop");
 }

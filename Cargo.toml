@@ -22,6 +22,11 @@ panic = "abort"
 opt-level = 3
 panic = "abort"
 
+
+[features]
+testing = []
+
+
 [dependencies]
 
 [build-dependencies]

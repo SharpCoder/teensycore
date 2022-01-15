@@ -395,12 +395,6 @@ mod test {
         assert_eq!(keys.get(2).unwrap(), 30u8);
     }
 
-    fn print_keys(vec: Vector::<u8>) {
-        for idx in 0 .. vec.size() {
-            println!("{}", vec.get(idx).unwrap());
-        }
-    }
-
     #[test]
     fn test_btree_remove() {
         let mut map = BTreeMap::new();
@@ -432,7 +426,6 @@ mod test {
         map.remove(2);
 
         // Test deeply nested left tree
-        print_keys(map.keys());
         assert_eq!(map.size(), 6);
 
         // Test deeply nested right tree
