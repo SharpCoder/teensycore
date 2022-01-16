@@ -76,13 +76,22 @@ pub enum DriveStrength {
 }
 
 pub struct PadConfig {
+
+    /// The hysteresis (HYS) bit controls whether a pin acts as a Schmitt trigger, which is a comparator remembering its last input state (hysteresis)
     pub hysterisis: bool,               // HYS
+    /// Controls signals to select pull-up or pull-down internal resistance strength
     pub resistance: PullUpDown,         // PUS
+    /// Control signal to enable internal pull-up/down resistors or pad keeper functionality.
     pub pull_keep: PullKeep,            // PUE
+    /// Enables or disables the pull up/down resistor
     pub pull_keep_en: bool,             // PKE
+    /// If set to 1, the output driver drives only logic 0. The drain of the internal transistor is open. It means that logic 1 has to be driven by an external component. This option is essential if connection between the pad and an external component is bi-directional.
     pub open_drain: bool,               // ODE
+    ///  These options can either increase the output driver current in the higher frequency range, or reduce the switching noise in the lower frequency range.
     pub speed: PinSpeed,                // SPEED
+    /// Resistance between output and load
     pub drive_strength: DriveStrength,  // DSE
+    /// This bitfield controls how fast the pin toggles between the two logic states. Since rapidly changing states consume more power and generate spikes, it should be enabled only when necessary
     pub fast_slew_rate: bool,           // SRE
 }
 

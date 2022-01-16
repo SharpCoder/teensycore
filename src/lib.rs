@@ -35,6 +35,7 @@ use phys::pins::*;
 
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
+pub const MICRO_TO_NANO: u64 = 1000;
 
 /// This is the primary macro necessary to bootstrap your application.
 /// It takes a code block that will be used as the entrypoint to your
