@@ -85,6 +85,7 @@ pub fn pit_configure(source: &PeriodicTimerSource, config: PITConfig) {
 }
 
 pub fn pit_start_clock() {
+    assign(addrs::CCM_CCGR1, read_word(addrs::CCM_CCGR1) | (0x3 << 12));
     assign(0x400F_C01C, read_word(0x400F_C01C) & !0x7F);
 }
 

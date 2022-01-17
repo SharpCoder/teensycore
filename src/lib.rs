@@ -18,7 +18,7 @@
 #[cfg(feature = "testing")]
 extern crate std;
 
-
+mod fastdivide;
 pub mod clock;
 pub mod debug;
 pub mod gate;
@@ -35,7 +35,7 @@ use phys::pins::*;
 
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
-pub const MICRO_TO_NANO: u64 = 1000;
+pub const MICRO_TO_NANO: u64 = S_TO_NANO / 1000000;
 
 /// This is the primary macro necessary to bootstrap your application.
 /// It takes a code block that will be used as the entrypoint to your
@@ -133,8 +133,7 @@ macro_rules! assembly {
 /// ```
 pub fn wait_ns(nano: u64) {
     let origin = clock::nanos();
-    let target = nano;
-    while (origin + target) > clock::nanos() {
+    while (origin + nano) >= clock::nanos() {
         assembly!("nop");
     }
 }
