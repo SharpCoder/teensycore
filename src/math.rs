@@ -1,11 +1,12 @@
 use crate::system::vector::*;
 
+
 /// Low pass filter
 pub fn lpf(alpha: f32, original: f32, updated: f32) -> f32 {
     return (alpha * original) + (1.0 - alpha) * updated;
 }
 
-pub fn pow32(base: u32, power: u32) -> u32 {
+pub fn pow64(base: u64, power: u64) -> u64 {
     if power == 0 {
         return 1;
     } else if power == 1{
@@ -20,13 +21,17 @@ pub fn pow32(base: u32, power: u32) -> u32 {
     return result;
 }
 
-pub fn atoi_u32(input: Vector::<u8>) -> u32 {
-    let mut result: u32 = 0;
-    let mut digits: u32 = 0;
+pub fn pow32(base: u32, power: u32) -> u32 {
+    return pow64(base as u64, power as u64) as u32;
+}
+
+pub fn atoi_u64(input: Vector::<u8>) -> u64 {
+    let mut result: u64 = 0;
+    let mut digits: u64 = 0;
 
     for character in input.reverse().into_iter() {
         if character >= 48 && character <= 57 {
-            result += char_to_int(character) as u32 * pow32(10, digits);
+            result += char_to_int(character) as u64 * pow64(10, digits);
         } else {
             continue;
         }
@@ -35,6 +40,10 @@ pub fn atoi_u32(input: Vector::<u8>) -> u32 {
 
     }
     return result;
+}
+
+pub fn atoi_u32(input: Vector::<u8>) -> u32 {
+    return atoi_u64(input) as u32;
 }
 
 pub fn char_to_int(char: u8) -> u8 {
@@ -59,7 +68,7 @@ pub fn min(left: usize, right: usize) -> usize {
 }
 
 // Given a number, how many digits is it
-pub fn digits(number: u32) -> u8 {
+pub fn digits(number: u64) -> u8 {
     // Count how many characters there are
     let mut digits = 0u8;
     let mut counter = number;
@@ -161,6 +170,11 @@ mod test {
         vecs_eq(itoa_u64(1234567), vec_str!(b"1234567"));
         vecs_eq(to_base(255, 16), vec_str!(b"FF"));
         vecs_eq(to_base(2700230707, 16), vec_str!(b"A0F24033"));
+    }
+
+    #[test]
+    fn test_long_() {
+        // assert_eq!()
     }
 
     #[test]

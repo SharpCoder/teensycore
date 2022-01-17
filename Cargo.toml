@@ -14,18 +14,8 @@ crate-type = ["staticlib"]
 [package.metadata.docs.rs]
 targets = ["thumbv7em-none-eabi"]
 
-[profile.release]
-opt-level = 3
-panic = "abort"
-
-[profile.dev]
-opt-level = 3
-panic = "abort"
-
-
 [features]
 testing = []
-
 
 [dependencies]
 

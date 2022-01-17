@@ -375,7 +375,6 @@ impl Uart {
         uart_set_reg(self.device, &CTRL_TCIE);
     }
 
-    #[inline]
     fn handle_send_irq(&mut self) {
         // Transmission complete
         let irq_statuses = uart_get_irq_statuses(self.device);
