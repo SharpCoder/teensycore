@@ -11,9 +11,12 @@
 //! coming back from the teensy.
 //! 
 //! The debug module provides some convenience methods for transmitting
-//! numbers, hex values, and ascii byte arrays..
+//! numbers, hex values, and ascii byte arrays.
 //! 
 //! Note: The default baud rate is 115200
+#![feature(lang_items)]
+#![crate_type = "staticlib"]
+#![no_std]
 
 extern crate teensycore;
 

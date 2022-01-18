@@ -4,6 +4,9 @@
 //! with the teensy-4.0 as the on-board orange LED. It relies on the
 //! phys module which holds all the logic for interfacing with on-board
 //! peripherals.
+#![feature(lang_items)]
+#![crate_type = "staticlib"]
+#![no_std]
 
 extern crate teensycore;
 
