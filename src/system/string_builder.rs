@@ -41,12 +41,30 @@ struct StringBuilderIter {
     size: usize,
 }
 
+/// An iterator for mapping over substrings
+/// split at a particular index.
+struct SplitIter {
+    current: Option<*mut CharBlockNode>,
+    index: usize,
+    size: usize,
+    buffer: StringBuilder,
+}
+
 pub struct StringBuilder {
     head: Option<*mut CharBlockNode>,
     tail: Option<*mut CharBlockNode>,
     capacity: Option<usize>,
     index: usize,
     blocks: usize,
+}
+
+impl Iterator for SplitIter {
+    type Item = StringBuilder;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        panic!("not implemented");
+        return None;
+    }
 }
 
 
@@ -79,7 +97,7 @@ impl Iterator for StringBuilderIter {
 
 impl StringBuilder {
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         return StringBuilder {
             blocks: 0,
             capacity: None,
@@ -137,7 +155,9 @@ impl StringBuilder {
     /// between the indexes.
     /// 
     /// This method returns a copy of the data in question,
-    /// not a mutable reference.
+    /// not a mutable reference. Don't forget to call `drop()`
+    /// on the resulting StringBuilder instance once you are 
+    /// done with it.
     pub fn slice(&self, start: usize, end: usize) -> StringBuilder {
         if start > end || end > self.index || self.head.is_none() {
             return StringBuilder::new();
