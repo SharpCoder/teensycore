@@ -42,6 +42,30 @@ The build script will generate a `.hex` file and place it in a folder called `ou
 
 **CAUTION**: Do not build this in release mode. It optimizes a lot of stuff away, and can cause problems.
 
+## Example
+
+Here is a very basic blinky example. To see more examples, check out the `/examples` folder.
+
+```
+#![feature(lang_items)]
+#![crate_type = "staticlib"]
+#![no_std]
+
+use teensycore::*;
+use teensycore::phys::pins::*;
+
+main!({
+    pin_mode(13, Mode::Output);
+
+    loop {
+        pin_out(13, Power::High);
+        wait_ns(1 * S_TO_NANO);
+        pin_out(13, Power::Low);
+        wait_ns(1 * S_TO_NANO);
+    }
+});
+```
+
 ## Contributing
 
 This project is a work-in-progress and will be undergoing significant development over the coming months as I make it suitable for my own needs. Contributions are welcome.
