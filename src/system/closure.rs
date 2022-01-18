@@ -43,6 +43,7 @@ impl <'a, T: Copy> Closure<'a, T> {
 mod test_closure {
     use super::*;
     use crate::system::vector::*;
+    use crate::system::boxed::*;
 
     #[test]
     fn test() {
@@ -57,7 +58,29 @@ mod test_closure {
         assert_eq!(true, true);
     }
 
+    #[test]
+    fn test2() {
+        let mut list = Vector::new();
+        
+        fn convert<T: Copy>(closure: Closure<T>) -> *const u32 {
+            let ptr = &closure as *const Closure<T>;
+            return ptr as *const u32;// as *const u32;
+        }
+
+        list.push(Box::new(Closure::bind(&invoke, ("hello", 42))));
+        list.push(Box::new(Closure::bind(&invoke2, ("worldz", 12, "you are great"))));
+
+        for closure in list.into_iter() {
+            let func = Box::from_raw::<Closure::<(&str, i32, &str)>>(closure);
+            func.invoke();
+        }
+    }
+
+    fn invoke2(message: (&str, i32, &str)) {
+        std::println!("[invoke2] {} {} {}", message.0, message.1, message.2);
+    }
+
     fn invoke(message: (&str, i32)) {
-        std::println!("{}", message.0);
+        std::println!("[invoke] {} {}", message.0, message.1);
     }
 }
