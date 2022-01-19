@@ -20,12 +20,8 @@
 //! serial_write(SerioDevice::Uart6, b"Hello, world!\r\n");
 //! 
 //! while serial_available(SerioDevice::Uart6) > 0 {
-//!     match serial_read(SerioDevice::Uart6) {
-//!         None => {}
-//!         Some(byte) => {
-//!             // Do something with this byte
-//!         }
-//!     }
+//!     let sb = serial_read(SerioDevice::Uart6);
+//!     // Do something with the Str
 //! }
 //! ```
 
@@ -36,7 +32,9 @@ use crate::phys::uart::*;
 use crate::phys::irq::*;
 use crate::phys::pins::*;
 use crate::phys::addrs;
+use crate::system::buffer::*;
 use crate::system::vector::*;
+use crate::system::str::*;
 
 struct HardwareConfig {
     device: Device,
@@ -49,11 +47,10 @@ struct HardwareConfig {
 
 /// Enable this to mirror all bytes received
 /// to the Debug UART peripherla.
-const DEBUG_SPY: bool = true;
-
+const DEBUG_SPY: bool = false;
 static mut TEMP_BUF: [u8; 128] = [0; 128];
 const UART_WATERMARK_SIZE: u32 = 0x2;
-const UART_BUFFER_SIZE: usize = 128; // bytes
+const UART_BUFFER_DEPTH: usize = 32; // Note: this is repeated for every uart device. Don't make it too big.
 static mut UART1: Uart = Uart::new(HardwareConfig {
     device: Device::Uart1,
     tx_pin: 24,
@@ -151,8 +148,8 @@ struct Uart {
     rx_pin: usize,
     initialized: bool,
     irq: Irq,
-    tx_buffer: Vector::<u8>,
-    rx_buffer: Vector::<u8>,
+    tx_buffer: Buffer::<UART_BUFFER_DEPTH, u8>,
+    rx_buffer: Str,
     sel_inp_reg: Option<u32>,
     sel_inp_val: Option<u32>,
     buffer_head: usize,
@@ -164,8 +161,8 @@ impl Uart {
     pub const fn new(config: HardwareConfig) -> Uart {
         return Uart {
             device: config.device,
-            tx_buffer: Vector { head: None, size: 0 },
-            rx_buffer: Vector { head: None, size: 0 },
+            tx_buffer: Buffer { data: [0; UART_BUFFER_DEPTH], tail: 0 },
+            rx_buffer: Str::new(),
             buffer_head: 0,
             initialized: false,
             tx_pin: config.tx_pin,
@@ -272,7 +269,7 @@ impl Uart {
     }
 
     pub fn available(&self) -> usize {
-        return self.rx_buffer.size();
+        return self.rx_buffer.len();
     }
 
     pub fn pause(&mut self) {
@@ -293,28 +290,16 @@ impl Uart {
     }
 
     pub fn write_vec(&mut self, bytes: &Vector<u8>) {
-        self.tx_buffer.join(bytes);
+        for item in bytes.into_iter() {
+            self.tx_buffer.push(item);
+        }
 
         pin_out(self.tx_pin, Power::High);
         uart_set_reg(self.device, &CTRL_TIE);
     }
 
-    pub fn get_rx_buffer(&mut self) -> &mut Vector::<u8> {
+    pub fn get_rx_buffer(&mut self) -> &mut Str {
         return &mut self.rx_buffer;
-    }
-
-    pub fn clear_rx_buffer(&mut self) {
-        self.rx_buffer.clear();
-    }
-
-    pub fn read(&mut self) -> Option<u8> {
-        if self.rx_buffer.size() > 0 {
-            return self.rx_buffer.dequeue();
-        } else if uart_has_data(self.device) {
-            return Some(uart_read_fifo(self.device));
-        } else {
-            return None;
-        }
     }
 
     fn handle_receive_irq(&mut self) {
@@ -329,19 +314,19 @@ impl Uart {
         // let rx_idle = irq_statuses & (0x1 << 20) > 0;
 
         // Read until it is empty
-        // let mut count = 0;
+        let mut count = 0;
         while uart_has_data(self.device) {
             let msg: u8 = uart_read_fifo(self.device);
-            self.rx_buffer.enqueue(msg);
-            // unsafe { TEMP_BUF[count] = msg };
-            // count += 1;
+            self.rx_buffer.append(&[msg]);
+            unsafe { TEMP_BUF[count] = msg };
+            count += 1;
         }
 
-        // if DEBUG_SPY {
-        //     for idx in 0 .. count {
-        //         serial_write(SerioDevice::Debug, &[unsafe { TEMP_BUF[idx] }]);
-        //     }
-        // }
+        if DEBUG_SPY {
+            for idx in 0 .. count {
+                serial_write(SerioDevice::Debug, &[unsafe { TEMP_BUF[idx] }]);
+            }
+        }
 
         if rx_overrun {
             crate::debug::blink_accumulate();
@@ -441,39 +426,47 @@ fn get_uart_interface (device: SerioDevice) -> &'static mut Uart {
     }
 }
 
+/// Initializes the serial device. This configures
+/// and muxes the relevant pins, sets baud rate,
+/// enables peripheral device, and generally
+/// wakes up the uart.
 pub fn serial_init(device: SerioDevice) {
     let uart = get_uart_interface(device);
     uart.initialize();
 }
 
-pub fn serial_read(device: SerioDevice) -> Option<u8> {
+/// Retuns the current buffer of data the serial interface
+/// has accumulated.
+/// 
+/// You can interact with this buffer, modify it, etc. It is
+/// recommended to call `.clear()` on the buffer as soon as you are
+/// done with the data, otherwise the buffer will eventually
+/// overflow.
+pub fn serial_read<'a>(device: SerioDevice) -> &'a mut Str {
     let uart = get_uart_interface(device);
-    return uart.read();
+    return uart.get_rx_buffer();
 }
 
+/// Returns the amount of data in the currenet read buffer.
 pub fn serial_available(device: SerioDevice) -> usize {
     let uart = get_uart_interface(device);
     return uart.available();
 }
 
+/// Enqueue data to be written over serial.
+/// 
+/// This data will be written at the next available interrupt
+/// cycle.
 pub fn serial_write(device: SerioDevice, bytes: &[u8]) {
     let uart = get_uart_interface(device);
     uart.write(bytes);
 }
 
-pub fn serial_write_vec(device: SerioDevice, bytes: &Vector<u8>) {
+pub fn serial_write_str(device: SerioDevice, bytes: &Str) {
     let uart = get_uart_interface(device);
-    uart.write_vec(bytes);
-}
-
-pub fn serial_buffer(device: SerioDevice) -> &'static mut Vector::<u8> {
-    let uart = get_uart_interface(device);
-    return uart.get_rx_buffer();
-}
-
-pub fn serial_clear_rx(device: SerioDevice) {
-    let uart = get_uart_interface(device);
-    uart.clear_rx_buffer();
+    for byte in bytes.into_iter() {
+        uart.write(&[byte]);
+    }
 }
 
 pub fn serial_baud(device: SerioDevice, rate: u32) {

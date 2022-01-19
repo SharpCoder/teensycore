@@ -35,7 +35,7 @@ impl <const SIZE: usize, T : Copy> Stack<T> for Buffer<SIZE, T> {
 
 impl <const SIZE: usize, T : Copy> Queue<T> for Buffer<SIZE, T> {
     fn enqueue(&mut self, item: T) {
-        if self.tail == SIZE {
+        if self.tail == SIZE - 1 {
             // Discard the data. we are buffer oerflow.
             return;
         }

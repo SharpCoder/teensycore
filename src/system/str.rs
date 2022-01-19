@@ -1,9 +1,9 @@
-//! StringBuilder is a module with functionality relating to
+//! Str is a module with functionality relating to
 //! string operations. It is an efficient datastructure that
 //! leverages heap-allocation, but re-uses memory whenever
 //! possible.
 //! 
-//! StringBuilder is implemented with a block-allocation
+//! Str is implemented with a block-allocation
 //! strategy, where segments of memory are reserved as
 //! chunks of bytes (or pages). This allows reduced calls 
 //! to alloc, as well as efficient array operations 
@@ -16,13 +16,33 @@
 //! a Vector instead.
 
 use crate::{mem::*, math::min};
-use core::iter::{Iterator};
+use core::iter::{Iterator, IntoIterator};
 
 const CHAR_BLOCK_SIZE: usize = 32;
+
+/// A thin wrapper around Str::with_content($X)
+/// 
+/// Use this to create an Str object without having
+/// to namespace anything.
+/// 
+/// ```no-test
+/// use teensycore::*;
+/// use teensycore::system::str::*;
+/// 
+/// let var = str!(b"hello, world!");
+/// ```
+#[macro_export]
+macro_rules! str {
+    ( $x: literal ) => {{
+        Str::with_content($x)
+    }};
+}
+
 
 pub trait StringOps<T> {
     fn index_of(&self, target: T) -> Option<usize>;
     fn contains(&self, target: T) -> bool;
+    fn reverse(&mut self) -> &mut Self;
 }
 
 /// A CharBlockNode is a block of characters allocated
@@ -35,22 +55,13 @@ struct CharBlockNode {
     next: Option<*mut CharBlockNode>,
 }
 
-struct StringBuilderIter {
+pub struct StrIter {
     current: Option<*mut CharBlockNode>,
     index: usize,
     size: usize,
 }
 
-/// An iterator for mapping over substrings
-/// split at a particular index.
-struct SplitIter {
-    current: Option<*mut CharBlockNode>,
-    index: usize,
-    size: usize,
-    buffer: StringBuilder,
-}
-
-pub struct StringBuilder {
+pub struct Str {
     head: Option<*mut CharBlockNode>,
     tail: Option<*mut CharBlockNode>,
     capacity: Option<usize>,
@@ -58,17 +69,7 @@ pub struct StringBuilder {
     blocks: usize,
 }
 
-impl Iterator for SplitIter {
-    type Item = StringBuilder;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        panic!("not implemented");
-        return None;
-    }
-}
-
-
-impl Iterator for StringBuilderIter {
+impl Iterator for StrIter {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -95,10 +96,10 @@ impl Iterator for StringBuilderIter {
 }
 
 
-impl StringBuilder {
+impl Str {
 
     pub const fn new() -> Self {
-        return StringBuilder {
+        return Str {
             blocks: 0,
             capacity: None,
             head: None,
@@ -108,7 +109,7 @@ impl StringBuilder {
     }
 
     pub fn with_content(content: &[u8]) -> Self {
-        let mut result = StringBuilder::new();
+        let mut result = Str::new();
         result.append(content);
         return result;
     }
@@ -116,7 +117,7 @@ impl StringBuilder {
     /// Create a new instance of a string builder, capped at a maximum
     /// capacity.
     pub fn with_capacity(capacity: usize) -> Self {
-        let mut result = StringBuilder {
+        let result = Str {
             blocks: 0,
             capacity: Some(capacity),
             head: None,
@@ -151,20 +152,19 @@ impl StringBuilder {
         self.tail = self.head;
     }
 
-    /// Returns a new StringBuilder containing the characters
+    /// Returns a new Str containing the characters
     /// between the indexes.
     /// 
     /// This method returns a copy of the data in question,
     /// not a mutable reference. Don't forget to call `drop()`
-    /// on the resulting StringBuilder instance once you are 
+    /// on the resulting Str instance once you are 
     /// done with it.
-    pub fn slice(&self, start: usize, end: usize) -> StringBuilder {
+    pub fn slice(&self, start: usize, end: usize) -> Str {
         if start > end || end > self.index || self.head.is_none() {
-            return StringBuilder::new();
+            return Str::new();
         }
 
-        let mut ptr = self.head;
-        let mut slice = StringBuilder::new();
+        let mut slice = Str::new();
 
         // TODO: This is extremely inefficient. Improve
         // the efficiency by iterating over blocks
@@ -194,6 +194,24 @@ impl StringBuilder {
         return Some(unsafe { (*ptr).data[access_point] });
     }
 
+    pub fn put(&mut self, index: usize, char: u8) {
+        if index > self.index {
+            return;
+        }
+
+        let block = index / CHAR_BLOCK_SIZE;
+        let mut ptr = self.head.unwrap();
+
+        for _ in 0 .. block {
+            ptr = unsafe { (*ptr).next.unwrap() };
+        }
+
+        let access_point = index - (block * CHAR_BLOCK_SIZE);
+        unsafe {
+            (*ptr).data[access_point] = char;
+        }
+    }
+
     /// Append a static array of ascii characters to the buffer.
     /// If this operation would result in a buffer overflow,
     /// the append is aborted and the function will return false
@@ -202,8 +220,8 @@ impl StringBuilder {
         return self._copy(chars, chars.len());
     }
 
-    /// Add all characters from another StringBuilder into self.
-    pub fn join(&mut self, other: &StringBuilder) -> bool {
+    /// Add all characters from another Str into self.
+    pub fn join(&mut self, other: &Str) -> bool {
         // If the other string is empty, we can abort.
         if other.head.is_none() {
             return true;
@@ -227,9 +245,9 @@ impl StringBuilder {
         return ret;
     }
 
-    /// Returns an iterator of this StringBuilder instance.
-    fn into_iter(&self) -> StringBuilderIter {
-        return StringBuilderIter {
+    /// Returns an iterator of this Str instance.
+    pub fn into_iter(&self) -> StrIter {
+        return StrIter {
             current: self.head,
             index: 0,
             size: self.index,
@@ -238,8 +256,8 @@ impl StringBuilder {
 
     /// This method will deallocate all heap memory
     /// data blocks, rendering this instance of
-    /// StringBuilder effectively unusable.
-    fn drop(&mut self) {
+    /// Str effectively unusable.
+    pub fn drop(&mut self) {
         match self.head {
             None => {
                 // There is nothing to deallocate
@@ -248,7 +266,7 @@ impl StringBuilder {
                 // We can deallocate this
                 let mut ptr = node;
                 loop {
-                    let mut next = unsafe { (*ptr).next };
+                    let next = unsafe { (*ptr).next };
                     free(ptr);
 
                     if next.is_some() {
@@ -352,15 +370,28 @@ impl StringBuilder {
     }
 }
 
-impl StringOps<StringBuilder> for StringBuilder {
+impl IntoIterator for Str {
+    type Item = u8;
+    type IntoIter = StrIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        return StrIter {
+            current: self.head,
+            index: 0,
+            size: self.index,
+        }
+    }
+}
+
+impl StringOps<Str> for Str {
 
     /// Searches Self for a matching content string. Returns
     /// true if a match is found.
-    fn contains(&self, target: StringBuilder) -> bool {
+    fn contains(&self, target: Str) -> bool {
         return self.index_of(target).is_some();
     }
 
-    fn index_of(&self, target: StringBuilder) -> Option<usize> {
+    fn index_of(&self, target: Str) -> Option<usize> {
         // Idk waht makes sense for this case
         if target.len() == 0 {
             return Some(0);
@@ -395,6 +426,22 @@ impl StringOps<StringBuilder> for StringBuilder {
 
         return None;
     }
+
+    fn reverse(&mut self) -> &mut Self {
+        if self.len() == 0 {
+            return self;
+        }
+
+        // This is going to suck
+        let mut tail = self.len() - 1;
+        for idx in 0 .. self.len() / 2 {
+            let temp = self.char_at(idx).unwrap();
+            self.put(idx, self.char_at(tail).unwrap());
+            self.put(tail, temp);
+            tail -= 1;
+        }
+        return self;
+    }
 }
 
 #[cfg(test)]
@@ -402,7 +449,14 @@ mod test_string_builder {
 
     use super::*;
 
-    fn sb_equals(sb: StringBuilder, text: &[u8]) {
+    fn sb_sb_compare(left: &mut Str, right: &mut Str) {
+        assert_eq!(left.len(), right.len());
+        for idx in 0 .. left.len() {
+            assert_eq!(left.char_at(idx), right.char_at(idx));
+        }
+    }
+
+    fn sb_equals(sb: Str, text: &[u8]) {
         for i in 0 .. text.len() {
             assert_eq!(sb.char_at(i).unwrap(), text[i]);
         }
@@ -410,7 +464,7 @@ mod test_string_builder {
 
     #[test]
     fn test_string_builder() {
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         sb.append(b"hello, world");
         sb.append(b"this has many characters in it. more than 32");
 
@@ -421,15 +475,15 @@ mod test_string_builder {
 
     #[test]
     fn test_capacity() {
-        let mut sb = StringBuilder::with_capacity(4);
+        let mut sb = Str::with_capacity(4);
         assert_eq!(sb.append(b"more than 4"), false);
         assert_eq!(sb.len(), 0);
     }
 
     #[test]
     fn test_join() {
-        let mut sb = StringBuilder::new();
-        let mut sb2 = StringBuilder::new();
+        let mut sb = Str::new();
+        let mut sb2 = Str::new();
 
         sb.append(b"hello, ");
         sb2.append(b"world");
@@ -442,7 +496,7 @@ mod test_string_builder {
 
     #[test]
     fn test_clear() {
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         sb.append(b"hello, world");
 
         // Clear string builder and then add more stuff to it
@@ -457,7 +511,7 @@ mod test_string_builder {
 
     #[test]
     fn test_slice() {
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         sb.append(b"g'morning ");
         sb.append(b"world");
 
@@ -472,7 +526,7 @@ mod test_string_builder {
 
     #[test]
     fn test_drop() {
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         sb.append(b"hello, world");
         sb.drop();
         assert_eq!(sb.index, 0);
@@ -480,7 +534,7 @@ mod test_string_builder {
 
     #[test]
     fn test_iterator() {
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         let comparator = b"hello, world";
         sb.append(comparator);
         let mut idx = 0;
@@ -493,12 +547,12 @@ mod test_string_builder {
 
     #[test]
     fn test_contains() {
-        let target = StringBuilder::with_content(b"is a z");
-        let target2 = StringBuilder::with_content(b"this is a test");
-        let empty = StringBuilder::new();
-        let overflow = StringBuilder::with_content(b"hello world, this is a test of great size");
+        let target = str!(b"is a z");
+        let target2 = str!(b"this is a test");
+        let empty = Str::new();
+        let overflow = str!(b"hello world, this is a test of great size");
 
-        let mut sb = StringBuilder::new();
+        let mut sb = Str::new();
         sb.append(b"hello world, this is a test");
 
         assert_eq!(sb.contains(target2), true);
@@ -508,11 +562,19 @@ mod test_string_builder {
     }
 
     #[test]
+    fn test_reverse() {
+        sb_sb_compare(str!(b"hello").reverse(), &mut str!(b"olleh"));
+        sb_sb_compare(str!(b"helo").reverse(), &mut str!(b"oleh"));
+        sb_sb_compare(str!(b"heo").reverse(), &mut str!(b"oeh"));
+        sb_sb_compare(str!(b"").reverse(), &mut str!(b""));
+    }
+
+    #[test]
     fn test_index_of() {
-        let target = StringBuilder::with_content(b"world");
-        let not_found = StringBuilder::with_content(b"worldz");
-        let overflow = StringBuilder::with_content(b"hello my world, this is not a test");
-        let sb = StringBuilder::with_content(b"hello, world!");
+        let target = str!(b"world");
+        let not_found = str!(b"worldz");
+        let overflow = str!(b"hello my world, this is not a test");
+        let sb = str!(b"hello, world!");
 
         assert_eq!(sb.index_of(target), Some(7));
         assert_eq!(sb.index_of(not_found), None);

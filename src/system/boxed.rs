@@ -15,8 +15,7 @@ impl Box {
     }
 
     pub fn unbox<T>(&self) -> *const T {
-        // let ptr = unsafe { self.item as *const T };
-        return unsafe { self.item as *const T };
+        return self.item as *const T ;
     }
 
     pub fn from_raw<T: Copy>(item: Self) -> T {

@@ -348,7 +348,7 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> Map<K, V> for BTreeMap<K, V> 
 #[cfg(test)]
 mod test { 
     use super::*;
-    use crate::system::strings::*;
+    use crate::system::str::*;
 
     #[test]
     fn test_map_node() {
