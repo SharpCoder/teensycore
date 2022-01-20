@@ -33,15 +33,15 @@ const CHAR_BLOCK_SIZE: usize = 32;
 /// ```
 #[macro_export]
 macro_rules! str {
-    ( $x: literal ) => {{
+    ( $x: expr ) => {{
         Str::with_content($x)
     }};
 }
 
 
 pub trait StringOps<T> {
-    fn index_of(&self, target: T) -> Option<usize>;
-    fn contains(&self, target: T) -> bool;
+    fn index_of(&self, target: &T) -> Option<usize>;
+    fn contains(&self, target: &T) -> bool;
     fn reverse(&mut self) -> &mut Self;
 }
 
@@ -67,6 +67,11 @@ pub struct Str {
     capacity: Option<usize>,
     index: usize,
     blocks: usize,
+}
+
+// This device is only 1 thread so... everyone gets a sync!
+unsafe impl Sync for Str  {
+
 }
 
 impl Iterator for StrIter {
@@ -127,7 +132,7 @@ impl Str {
 
         return result;
     }
-
+    
     /// Return the length of bytes used inside the buffer.
     pub fn len(&self) -> usize {
         return self.index;
@@ -387,11 +392,11 @@ impl StringOps<Str> for Str {
 
     /// Searches Self for a matching content string. Returns
     /// true if a match is found.
-    fn contains(&self, target: Str) -> bool {
+    fn contains(&self, target: &Str) -> bool {
         return self.index_of(target).is_some();
     }
 
-    fn index_of(&self, target: Str) -> Option<usize> {
+    fn index_of(&self, target: &Str) -> Option<usize> {
         // Idk waht makes sense for this case
         if target.len() == 0 {
             return Some(0);
@@ -555,10 +560,10 @@ mod test_string_builder {
         let mut sb = Str::new();
         sb.append(b"hello world, this is a test");
 
-        assert_eq!(sb.contains(target2), true);
-        assert_eq!(sb.contains(target), false);
-        assert_eq!(sb.contains(empty), true);
-        assert_eq!(sb.contains(overflow), false);
+        assert_eq!(sb.contains(&target2), true);
+        assert_eq!(sb.contains(&target), false);
+        assert_eq!(sb.contains(&empty), true);
+        assert_eq!(sb.contains(&overflow), false);
     }
 
     #[test]
@@ -576,8 +581,8 @@ mod test_string_builder {
         let overflow = str!(b"hello my world, this is not a test");
         let sb = str!(b"hello, world!");
 
-        assert_eq!(sb.index_of(target), Some(7));
-        assert_eq!(sb.index_of(not_found), None);
-        assert_eq!(sb.index_of(overflow), None);
+        assert_eq!(sb.index_of(&target), Some(7));
+        assert_eq!(sb.index_of(&not_found), None);
+        assert_eq!(sb.index_of(&overflow), None);
     }
 }

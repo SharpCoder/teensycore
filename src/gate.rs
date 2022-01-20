@@ -20,7 +20,7 @@ pub struct Gate {
     pub target_times: Vector::<u64>,
     pub current_index: usize,
     pub tail: usize,
-    pub once: bool,
+    pub sealed: bool,
     pub compiled: bool,
 }
 
@@ -64,7 +64,7 @@ impl Gate {
             target_times: Vector::new(),
             current_index: 0usize,
             tail: 0usize,
-            once: false,
+            sealed: false,
             compiled: false,
         };
     }
@@ -89,17 +89,30 @@ impl Gate {
 
         self.target_times.push(0);
         self.durations.push(duration_nanos);
-        self.conditions.push(|&mut gate| {
-            return nanos() > gate.target_times.get(gate.current_index).unwrap();
-        });
+        self.conditions.push(when_cond);
         self.functions.push(then);
         self.tail += 1;
         return self;
     }
 
     /// If called, this gate will only ever execute one time.
-    pub fn once(&mut self) -> &mut Self {
-        self.once = true;
+    pub fn once(&mut self, func: ExecFn) -> &mut Self {
+        if self.compiled {
+            return self;
+        }
+
+        func();
+        return self;
+    }
+
+    /// If a gate is sealed, it will only execute to completion once.
+    /// After that, it will remain idle forever.
+    pub fn sealed(&mut self) -> &mut Self {
+        if self.compiled {
+            return self;
+        }
+
+        self.sealed = true;
         return self;
     }
     
@@ -117,10 +130,25 @@ impl Gate {
         return *self;
     }
 
+    pub fn reset(&mut self) {
+        self.current_index = 0;
+        self.conditions.clear();
+        self.functions.clear();
+        self.target_times.clear();
+        self.durations.clear();
+        self.compiled = false;
+    }
+
     // This method will evaluate the current
     // gate condition and, if true, execute
     // the underlying block.
     pub fn process(&mut self) {
+
+        // Check if it is valid to process
+        if self.current_index == self.tail && self.sealed {
+            return;
+        }
+
         let cond = self.conditions.get(self.current_index).unwrap();
         let then = self.functions.get(self.current_index).unwrap();
 
@@ -136,4 +164,8 @@ impl Gate {
         }
 
     }
+}
+
+fn when_cond(gate: &mut Gate) -> bool {
+    return nanos() > gate.target_times.get(gate.current_index).unwrap();
 }
