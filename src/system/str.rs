@@ -16,7 +16,7 @@
 //! a Vector instead.
 
 use crate::{mem::*, math::min};
-use core::iter::{Iterator, IntoIterator};
+use core::{iter::{Iterator, IntoIterator}, cmp::Ordering};
 
 const CHAR_BLOCK_SIZE: usize = 32;
 
@@ -111,6 +111,16 @@ impl Str {
             tail: None,
             index: 0,
         };
+    }
+
+    /// Create a new string from another string.
+    /// This operation performs a bulk copy of
+    /// byte arrays and returns a new string
+    /// with its own lifetime.
+    pub fn from_str(other: &Str) -> Self {
+        let mut result = Str::new();
+        result.join(other);
+        return result;
     }
 
     pub fn with_content(content: &[u8]) -> Self {
@@ -446,6 +456,49 @@ impl StringOps<Str> for Str {
             tail -= 1;
         }
         return self;
+    }
+}
+
+
+impl PartialEq for Str {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        for idx in 0 .. self.len() {
+            let left = self.char_at(idx).unwrap();
+            let right = other.char_at(idx).unwrap();
+            if left != right {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+// This might be a bad idea... but it makes BTreeMap super useful
+impl PartialOrd for Str {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let min_count = min(self.len(), other.len());
+        for idx in 0 .. min_count {
+            let left = self.char_at(idx).unwrap();
+            let right = other.char_at(idx).unwrap();
+
+            if left == right {
+                continue;
+            } else {
+                return left.partial_cmp(&right);
+            }
+        }
+
+        // They are the same up to this point
+        if self.len() > other.len() {
+            return Some(Ordering::Greater);
+        } else {
+            return Some(Ordering::Less);
+        }
     }
 }
 
