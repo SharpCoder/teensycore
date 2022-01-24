@@ -3,24 +3,22 @@ use crate::mem::*;
 use crate::system::vector::*;
 use core::cmp::*;
 
-pub trait Map<K : PartialOrd + PartialEq + Copy, V : Copy> {
+pub trait Map<K : PartialOrd + PartialEq, V> {
     fn insert(&mut self, key: K, value: V);
     fn remove(&mut self, key: K);
-    fn get(&self, key: K) -> Option<V>;
-    fn get_mut(&mut self, key: K) -> Option<&mut V>;
-    fn keys(&self) -> Vector::<K>;
+    fn get(&self, key: &K) -> Option<&V>;
+    fn get_mut(&mut self, key: &K) -> Option<&mut V>;
 }
 
-pub trait BTree<K : PartialOrd + PartialEq + Copy, V : Copy> {
-    fn get_mut(&mut self, target: K) -> Option<&mut V>;
-    fn get(&self, target: K) -> Option<V>;
+pub trait BTree<K : PartialOrd + PartialEq, V> {
+    fn get_mut(&mut self, target: &K) -> Option<&mut V>;
+    fn get(&self, target: &K) -> Option<&V>;
     fn insert(&mut self, target: K, value: V);
-    fn keys(&self) -> Vector::<K>;
     fn remove(&mut self, target: K);
 }
 
 #[derive(Copy, Clone)]
-pub struct MapNode<K : PartialOrd + PartialEq + Copy, V : Copy> {
+pub struct MapNode<K : PartialOrd + PartialEq, V> {
     item: V,
     key: K,
     left: Option<*mut MapNode<K, V>>,
@@ -29,19 +27,19 @@ pub struct MapNode<K : PartialOrd + PartialEq + Copy, V : Copy> {
 
 
 #[derive(Copy, Clone)]
-pub struct BTreeMap<K : PartialOrd + PartialEq + Copy, V : Copy> {
+pub struct BTreeMap<K : PartialOrd + PartialEq, V> {
     pub root: Option<MapNode<K, V>>,
 }
 
-unsafe impl<K : PartialOrd + PartialEq + Copy, V : Copy> Sync for BTreeMap<K, V> where V: Sync  {}
+unsafe impl<K : PartialOrd + PartialEq, V> Sync for BTreeMap<K, V> where V: Sync  {}
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> PartialEq for MapNode<K, V> {
+impl <K : PartialOrd + PartialEq, V> PartialEq for MapNode<K, V> {
     fn eq(&self, other: &Self) -> bool {
         return self.key == other.key;
     }
 }
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> PartialOrd for MapNode<K, V> {
+impl <K : PartialOrd + PartialEq, V> PartialOrd for MapNode<K, V> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.key > other.key {
             return Some(Ordering::Greater);
@@ -53,7 +51,7 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> PartialOrd for MapNode<K, V> 
     }
 }
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> MapNode<K, V> {
+impl <K : PartialOrd + PartialEq, V> MapNode<K, V> {
     pub fn new(key: K, val: V) -> *mut Self {
         let ptr = alloc();
         unsafe {
@@ -115,11 +113,11 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> MapNode<K, V> {
     }
 }
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V> {
-    fn get(&self, target: K) -> Option<V> {
-        if self.key == target {
-            return Some(self.item);
-        } else if self.key > target {
+impl <K : PartialOrd + PartialEq, V> BTree<K, V> for MapNode<K, V> {
+    fn get(&self, target: &K) -> Option<&V> {
+        if &self.key == target {
+            return Some(&self.item);
+        } else if &self.key > target {
             // Go left
             return match self.left {
                 None => None,
@@ -134,10 +132,10 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V>
         }
     }
 
-    fn get_mut(&mut self, target: K) -> Option<&mut V> {
-        if self.key == target {
+    fn get_mut(&mut self, target: &K) -> Option<&mut V> {
+        if &self.key == target {
             return Some(&mut self.item);
-        } else if self.key > target {
+        } else if &self.key > target {
             // Go left
             return match self.left {
                 None => None,
@@ -179,15 +177,15 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V>
     }
 
     fn remove(&mut self, target: K) {
-        let self_key = self.key;
+        let self_key = &self.key;
 
 
         let has_left_child = self.left.is_some();
         let has_right_child = self.right.is_some();
-        let left_matches = has_left_child && unsafe { *(self.left.unwrap()) }.key == target;
-        let right_matches = has_right_child && unsafe { *(self.right.unwrap()) }.key == target;        
+        let left_matches = has_left_child && unsafe { (*(self.left.as_ref().unwrap())).as_ref().unwrap() }.key == target;
+        let right_matches = has_right_child && unsafe { (*(self.right.as_ref().unwrap())).as_ref().unwrap() }.key == target;        
 
-        if self_key == target {
+        if self_key == &target {
             // Oops, this is the root node, nothing to remove.
 
         } else if left_matches || right_matches {
@@ -196,7 +194,7 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V>
                 true => *(self.left.as_mut().unwrap()),
                 false => *(self.right.as_mut().unwrap()), 
             };
-            let descendants = unsafe { *node }.descendant_count();
+            let descendants = unsafe { node.as_ref().unwrap() }.descendant_count();
 
             if descendants == 0 {
                 // Snip it
@@ -211,10 +209,10 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V>
                 // Get the single child of the matched node
                 // and replace the current node with it
                 let replacement;
-                if unsafe { *node }.left.is_some() {
-                    replacement = unsafe { *node }.left;
+                if unsafe { node.as_ref().unwrap() }.left.is_some() {
+                    replacement = unsafe { node.as_ref().unwrap() }.left;
                 } else {
-                    replacement = unsafe { *node }.right;
+                    replacement = unsafe { node.as_ref().unwrap() }.right;
                 }
 
                 if left_matches {
@@ -262,25 +260,9 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTree<K, V> for MapNode<K, V>
         } 
     }
 
-    fn keys(&self) -> Vector::<K> {
-        let mut result = vector!(self.key);
-        match self.left {
-            None => {},
-            Some(node) => {
-                result.join(&unsafe { node.as_ref().unwrap() }.keys());
-            }
-        }
-        match self.right {
-            None => {},
-            Some(node) => {
-                result.join(&unsafe { node.as_ref().unwrap() }.keys());
-            }
-        }
-        return result;
-    }
 }
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTreeMap<K, V> {
+impl <K : PartialOrd + PartialEq, V> BTreeMap<K, V> {
     pub fn new() -> Self {
         return BTreeMap {
             root: None,
@@ -295,7 +277,7 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> BTreeMap<K, V> {
     }
 }
 
-impl <K : PartialOrd + PartialEq + Copy, V : Copy> Map<K, V> for BTreeMap<K, V> {
+impl <K : PartialOrd + PartialEq, V> Map<K, V> for BTreeMap<K, V> {
     fn insert(&mut self, key: K, value: V) {
         // If the root node is null, we can insert there
         if self.root.is_none() {
@@ -313,7 +295,7 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> Map<K, V> for BTreeMap<K, V> 
     fn remove(&mut self, key: K) {
         if self.root.is_none() {
             return;
-        } else if self.root.unwrap().key == key {
+        } else if self.root.as_ref().unwrap().key == key {
             // NOTE: Nothing to free because root is not on the heap
             self.root = None;
         } else {
@@ -321,24 +303,17 @@ impl <K : PartialOrd + PartialEq + Copy, V : Copy> Map<K, V> for BTreeMap<K, V> 
         }
     }
 
-    fn get(&self, key: K) -> Option<V> {
+    fn get(&self, key: &K) -> Option<&V> {
         return match &self.root {
             None => None,
             Some(node) => node.get(key),
         };
     }
 
-    fn get_mut(&mut self, key: K) -> Option<&mut V> {
+    fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         return match &self.root {
             None => None,
             Some(_) => self.root.as_mut().unwrap().get_mut(key),
-        };
-    }
-
-    fn keys(&self) -> Vector::<K> {
-        return match &self.root {
-            None => Vector::new(),
-            Some(head) => head.keys(),
         };
     }
 }
@@ -361,10 +336,10 @@ mod test {
         node.insert(80, 15);
         assert_eq!(node.size(), 3);
 
-        assert_eq!(node.get(80).unwrap(), 15);
-        assert_eq!(node.get(125).unwrap(), 25);
-        assert_eq!(node.get(100).unwrap(), 50);
-        assert_eq!(node.get(374), None);
+        assert_eq!(node.get(&80).unwrap(), &15);
+        assert_eq!(node.get(&125).unwrap(), &25);
+        assert_eq!(node.get(&100).unwrap(), &50);
+        assert_eq!(node.get(&374), None);
 
     }
 
@@ -377,22 +352,8 @@ mod test {
         map.insert(17, 3);
         
         assert_eq!(map.size(), 3);
-        assert_eq!(map.get(10), Some(1));
-        assert_eq!(map.get(15), Some(2));
-    }
-
-    #[test]
-    fn test_btree_keys() {
-        let mut map = BTreeMap::new();
-        map.insert(10u8, 1u8);
-        map.insert(20u8, 2u8);
-        map.insert(30u8, 3u8);
-
-        let keys = map.keys();
-        assert_eq!(keys.size(), 3);
-        assert_eq!(keys.get(0).unwrap(), 10u8);
-        assert_eq!(keys.get(1).unwrap(), 20u8);
-        assert_eq!(keys.get(2).unwrap(), 30u8);
+        assert_eq!(map.get(&10), Some(&1));
+        assert_eq!(map.get(&15), Some(&2));
     }
 
     #[test]
@@ -408,13 +369,13 @@ mod test {
         assert_eq!(map.size(), 5);
         map.remove(8);
         assert_eq!(map.size(), 4);
-        assert_eq!(map.get(8), None);
+        assert_eq!(map.get(&8), None);
         map.remove(9);
         assert_eq!(map.size(), 3);
-        assert_eq!(map.get(9), None);
+        assert_eq!(map.get(&9), None);
         map.remove(4);
         assert_eq!(map.size(), 2);
-        assert_eq!(map.get(4), None);
+        assert_eq!(map.get(&4), None);
 
         // This will test deeply nested deletes
         map.insert(8, 1);

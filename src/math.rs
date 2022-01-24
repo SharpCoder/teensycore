@@ -53,7 +53,7 @@ pub fn pow(base: u64, power: u64) -> u64 {
 }
 
 /// Ascii to integer
-pub fn atoi(input: Str) -> u64 {
+pub fn atoi(input: &Str) -> u64 {
     if input.len() == 0 {
         return 0;
     }
@@ -65,7 +65,7 @@ pub fn atoi(input: Str) -> u64 {
     let size = input.len();
     let mut idx = 0;
     let tail =  size - 1;
-    for char in input {
+    for char in input.into_iter() {
         unsafe {
             U64_BUF[tail - idx] = char;
         }
@@ -104,6 +104,15 @@ pub fn min<T: PartialOrd> (left: T, right: T) -> T {
         return right;
     } else {
         return left;
+    }
+}
+
+/// Return the larger of two comparable items.
+pub fn max<T: PartialOrd> (left: T, right: T) -> T {
+    if left > right {
+        return left;
+    } else {
+        return right;
     }
 }
 
@@ -176,11 +185,27 @@ mod test {
         assert_eq!(char_to_int(b'0'), 0);
         assert_eq!(char_to_int(b'9'), 9);
 
-        assert_eq!(atoi(str!(b"")), 0);
-        assert_eq!(atoi(str!(b"45632190")), 45632190);
-        assert_eq!(atoi(str!(b"1")), 1);
-        assert_eq!(atoi(str!(b"12")), 12);
-        assert_eq!(atoi(str!(b"103")), 103);
-        assert_eq!(atoi(str!(b"     1990\n")), 1990);
+        let mut str = str!(b"");
+        assert_eq!(atoi(&str), 0);
+
+        str.clear();
+        str.append(b"45632190");
+        assert_eq!(atoi(&str), 45632190);
+
+        str.clear();
+        str.append(b"1");
+        assert_eq!(atoi(&str), 1);
+
+        str.clear();
+        str.append(b"12");
+        assert_eq!(atoi(&str), 12);
+
+        str.clear();
+        str.append(b"103");
+        assert_eq!(atoi(&str), 103);
+
+        str.clear();
+        str.append(b"     1990\n");
+        assert_eq!(atoi(&str), 1990);
     }
 }

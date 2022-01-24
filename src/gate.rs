@@ -29,7 +29,7 @@ macro_rules! gate_open {
     ( $( $x:expr ),* ) => {
         {
             let id = code_hash();
-            let current_node = unsafe { GATES.get(id) };
+            let current_node = unsafe { GATES.get(&id) };
             let result: &mut Gate;
             
             match current_node {
@@ -45,7 +45,7 @@ macro_rules! gate_open {
                     unsafe { GATES.insert(id, new_gate as u32) };
                 },
                 Some(gate) => {
-                    result = unsafe { (gate as *mut Gate).as_mut().unwrap() };
+                    result = unsafe { ((*gate) as *mut Gate).as_mut().unwrap() };
                 }
             }
 
@@ -156,7 +156,9 @@ impl Gate {
             then();
             self.current_index += 1;
 
-            if self.current_index == self.tail {
+            if self.current_index == self.tail && self.sealed {
+                return;
+            } else if self.current_index == self.tail {
                 self.current_index = 0;
             } 
 

@@ -47,10 +47,10 @@ struct HardwareConfig {
 
 /// Enable this to mirror all bytes received
 /// to the Debug UART peripherla.
-const DEBUG_SPY: bool = false;
+const DEBUG_SPY: bool = true;
 static mut TEMP_BUF: [u8; 128] = [0; 128];
 const UART_WATERMARK_SIZE: u32 = 0x2;
-const UART_BUFFER_DEPTH: usize = 32; // Note: this is repeated for every uart device. Don't make it too big.
+const UART_BUFFER_DEPTH: usize = 512; // Note: this is repeated for every uart device. Don't make it too big.
 static mut UART1: Uart = Uart::new(HardwareConfig {
     device: Device::Uart1,
     tx_pin: 24,
