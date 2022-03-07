@@ -37,6 +37,26 @@ pub fn itob(number: u64, radix: u64) -> Str {
     return Str::with_content(unsafe { &U64_BUF[0..size] });
 }
 
+/// This method takes a range of values, an amount of time that has passed, and a duration
+/// and returns a discreet value between start and end.
+pub fn interpolate(start: u32, end: u32, elapsed: u64, duration: u64) -> u32 {
+    // Calculate step
+    let x0 = 0f32;
+    let y0 = min(start, end) as f32;
+    let x1 = duration as f32;
+    let y1 = max(end, start) as f32;
+    let x = min(elapsed, duration) as f32;
+    let delta = (x  * ((y1 - y0)/(x1 - x0))) as u32;
+
+    // Check if it's reversed. This is necessary because of
+    // integer division and stuff.
+    if start > end {
+        return start - delta;
+    } else {
+        return start + delta;
+    }
+}
+
 pub fn pow(base: u64, power: u64) -> u64 {
     if power == 0 {
         return 1;

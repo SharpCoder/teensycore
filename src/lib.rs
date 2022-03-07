@@ -18,7 +18,7 @@
 #[cfg(feature = "testing")]
 extern crate std;
 
-mod fastdivide;
+pub mod fastdivide;
 pub mod clock;
 pub mod debug;
 pub mod gate;
@@ -32,6 +32,9 @@ use core::arch::asm;
 use core::arch::global_asm;
 use phys::irq::*;
 use phys::pins::*;
+use crate::fastdivide::*;
+
+pub static mut WAIT_DIVIDER: Option<DividerU64> = None;
 
 pub const S_TO_NANO: u64 = 1000000000;
 pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
@@ -50,6 +53,7 @@ macro_rules! main {
         use teensycore::serio::*;
         use teensycore::mem::*;
         use teensycore::system::map::*;
+        use teensycore::fastdivide::*;
         
         pub static mut GATES: BTreeMap::<u32, u32> = BTreeMap {
             root: None,
@@ -58,6 +62,12 @@ macro_rules! main {
 
         #[no_mangle]
         pub fn main() {
+
+            // Setup wait divider used for time keeping.
+            unsafe {
+                teensycore::WAIT_DIVIDER = Some(DividerU64::divide_by(1848));
+            }
+            
             // Initialize irq system, (disables all interrupts)
             disable_interrupts();
 
@@ -132,8 +142,15 @@ macro_rules! assembly {
 /// wait_ns(S_TO_NANO * 1);
 /// ```
 pub fn wait_ns(nano: u64) {
-    let origin = clock::nanos();
-    while (origin + nano) >= clock::nanos() {
+    wait_exact_ns(nano);
+}
+
+#[inline]
+#[no_mangle]
+pub fn wait_exact_ns(nano: u64) {
+    // This is the default overhead
+    let cycles = (nano - 55) / 10;
+    for _ in 0 .. cycles {
         assembly!("nop");
     }
 }

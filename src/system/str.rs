@@ -16,6 +16,7 @@
 //! a Vector instead.
 
 use crate::{mem::*, math::min};
+use crate::system::vector::*;
 use core::{iter::{Iterator, IntoIterator}, cmp::Ordering};
 
 const CHAR_BLOCK_SIZE: usize = 32;
@@ -40,6 +41,7 @@ macro_rules! str {
 
 
 pub trait StringOps<T> {
+    fn split(&self, target: u8) -> Vector<Str>; 
     fn index_of(&self, target: &T) -> Option<usize>;
     fn contains(&self, target: &T) -> bool;
     fn reverse(&mut self) -> &mut Self;
@@ -61,6 +63,7 @@ pub struct StrIter {
     size: usize,
 }
 
+#[derive(Copy, Clone)]
 pub struct Str {
     head: Option<*mut CharBlockNode>,
     tail: Option<*mut CharBlockNode>,
@@ -260,6 +263,12 @@ impl Str {
         return ret;
     }
 
+    pub fn join_with_drop(&mut self, other: &mut Str) -> bool {
+        let ret = self.join(other);
+        other.drop();
+        return ret;
+    }
+
     /// Returns an iterator of this Str instance.
     pub fn into_iter(&self) -> StrIter {
         return StrIter {
@@ -399,6 +408,36 @@ impl IntoIterator for Str {
 }
 
 impl StringOps<Str> for Str {
+
+    /// Split the string into a vector of other strings delimited
+    /// by the attribute provided.
+    /// 
+    /// ```
+    /// use teensycore::*;
+    /// use teensycore::system::str::*;
+    /// 
+    /// let string = str!(b"hello\nworld");
+    /// let strings = string.split(b'\n');
+    /// ```
+    fn split(&self, target: u8) -> Vector<Str> {
+        let mut result = Vector::new();
+        let mut temp = Str::new();
+
+        for char in self.into_iter() {
+            if char == target {
+                result.push(Str::from_str(&temp));
+                temp.clear();
+            } else {
+                temp.append(&[char]);
+            }
+        }
+
+
+        if temp.len() > 0 {
+            result.enqueue(Str::from_str(&temp));
+        }
+        return result;
+    }
 
     /// Searches Self for a matching content string. Returns
     /// true if a match is found.
@@ -637,5 +676,14 @@ mod test_string_builder {
         assert_eq!(sb.index_of(&target), Some(7));
         assert_eq!(sb.index_of(&not_found), None);
         assert_eq!(sb.index_of(&overflow), None);
+    }
+
+    #[test]
+    fn test_split() {
+        let target = str!(b"hello:world");
+        let strs = target.split(b':');
+        
+        sb_sb_compare(&mut strs.get(0).unwrap(), &mut str!(b"hello"));
+        sb_sb_compare(&mut strs.get(1).unwrap(), &mut str!(b"world"));
     }
 }

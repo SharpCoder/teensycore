@@ -18,7 +18,7 @@ pub struct Mempage {
     pub ptr: *mut u32,
 }
 
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 impl Mempage {
     pub const fn new(size: usize, ptr: *mut u32) -> Self {
         return Mempage {
@@ -123,7 +123,7 @@ pub fn is_overrun() -> bool {
 /// if we encounter a bad sector,
 /// the device will throw an oob irq
 /// and enter error mode.
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 pub fn memtest() {
     for addr in MEMORY_BEGIN_OFFSET .. MEMORY_MAXIMUM / 4 {
         unsafe {
@@ -133,7 +133,7 @@ pub fn memtest() {
     }
 }
 
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 pub fn alloc_bytes(bytes: usize) -> *mut u32 {
     // Check for boundaries and reset if applicable.
     unsafe {
@@ -148,25 +148,27 @@ pub fn alloc_bytes(bytes: usize) -> *mut u32 {
     }
 }
 
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 pub fn alloc<T>() -> *mut T {
     let bytes = size_of::<T>();
     return Mempage::add_page(bytes);
 }
 
 /// Free a pointer by updating the pagefile
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 pub fn free<T>(ptr: *mut T) {
    let zero_ptr = ptr as u32;
     Mempage::free(zero_ptr);
 }
 
-#[cfg(test)]
+
+#[cfg(feature = "testing")]
 pub fn alloc<T>() -> *mut T {
     return unsafe { std::alloc::alloc(std::alloc::Layout::new::<T>()) as *mut T };
 }
 
-#[cfg(test)]
+
+#[cfg(feature = "testing")]
 pub fn free<T>(_ptr: *mut T) {
     // Do nothing
 }
