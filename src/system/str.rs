@@ -434,8 +434,12 @@ impl StringOps<Str> for Str {
 
 
         if temp.len() > 0 {
-            result.enqueue(Str::from_str(&temp));
+            result.push(Str::from_str(&temp));
         }
+
+        temp.clear();
+        temp.drop();
+        
         return result;
     }
 

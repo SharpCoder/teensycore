@@ -74,18 +74,24 @@ pub fn pow(base: u64, power: u64) -> u64 {
 
 /// Ascii to integer
 pub fn atoi(input: &Str) -> u64 {
-    if input.len() == 0 {
+    let mut inp_copy = Str::from_str(input);
+    if inp_copy.len() == 0 {
         return 0;
     }
 
     let mut result: u64 = 0;
     let mut digits: u64 = 0;
     
+    // Clear the buffer
+    unsafe {
+        U64_BUF = [0; 20];
+    }
+
     // Copy input into buffer
-    let size = input.len();
+    let size = inp_copy.len();
     let mut idx = 0;
     let tail =  size - 1;
-    for char in input.into_iter() {
+    for char in inp_copy.into_iter() {
         unsafe {
             U64_BUF[tail - idx] = char;
         }
@@ -102,6 +108,7 @@ pub fn atoi(input: &Str) -> u64 {
         digits += 1;
     }
 
+    inp_copy.drop();
     return result;
 }
 
@@ -215,6 +222,10 @@ mod test {
         str.clear();
         str.append(b"1");
         assert_eq!(atoi(&str), 1);
+
+        str.clear();
+        str.append(b"6\n");
+        assert_eq!(atoi(&str), 6);
 
         str.clear();
         str.append(b"12");

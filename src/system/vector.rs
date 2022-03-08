@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::mem::{ alloc, free };
+use crate::{mem::{ alloc, free }, math::rand};
 use core::iter::{Iterator};
 
 /// This macro returns a vector of the items you pass to it.
@@ -315,6 +315,39 @@ impl <T: Clone + Copy> Vector<T> {
         return result;
     }
 
+    /// This method will take a vector of <T>
+    /// and return a copy of it, shuffled.
+    /// 
+    /// This is supposed to use the fisher-yates algorithm.
+    /// 
+    /// ```
+    /// use teensycore::system::vector::*;
+    /// use teensycore::*;
+    /// 
+    /// let vec = vector!(1,2,3,4);
+    /// let shuffled = vec.shuffle();
+    /// ```
+    pub fn shuffle(&self) -> Vector::<T> {
+        let mut result = self.reverse();
+        
+        // Items of 0 or 1 size do not need shuffled.
+        if result.size() < 2 {
+            return result;
+        }
+
+        for idx in 0 .. (self.size() - 2) {
+            let random_idx = idx + (rand() % (self.size() - idx) as u64) as usize;
+            
+            let rand_val = result.get(random_idx).unwrap();
+            let orig_val = result.get(idx).unwrap();
+
+            result.put(idx, rand_val);
+            result.put(random_idx, orig_val);
+        }
+
+        return result;
+    }
+
     pub fn clear(&mut self) {
         while self.size() > 0 {
             self.pop();
@@ -330,6 +363,8 @@ impl <T: Clone + Copy> Vector<T> {
 
 #[cfg(test)]
 mod test { 
+    use crate::math::seed_rand;
+
     use super::*;
 
     #[derive(Copy, Clone)]
@@ -473,5 +508,19 @@ mod test {
         }
 
         assert_eq!(count, vec.size());
+    }
+
+    #[test]
+    fn test_shuffle() {
+        let vec = vector!(1,2,3,4,5,6);
+        seed_rand(1340);
+
+        let next_vec = vec.shuffle();
+        assert_eq!(next_vec.get(0).unwrap(), 4);
+        assert_eq!(next_vec.get(1).unwrap(), 3);
+        assert_eq!(next_vec.get(2).unwrap(), 6);
+        assert_eq!(next_vec.get(3).unwrap(), 1);
+        assert_eq!(next_vec.get(4).unwrap(), 2);
+        assert_eq!(next_vec.get(5).unwrap(), 5);
     }
 }
