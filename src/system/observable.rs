@@ -1,10 +1,7 @@
-use core::any::Any;
-
 use crate::*;
 use crate::system::vector::*;
 use crate::system::str::*;
 use crate::system::map::*;
-use crate::system::boxed::*;
 
 pub struct Observable<'a, T> {
     methods: BTreeMap<Str, Vector::<&'a dyn Fn(&T)>>,

@@ -1,6 +1,4 @@
-use crate::*;
 use crate::mem::*;
-use crate::system::vector::*;
 use core::cmp::*;
 
 pub trait Map<K : PartialOrd + PartialEq, V> {
