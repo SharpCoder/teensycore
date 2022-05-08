@@ -144,9 +144,9 @@ pub fn pit_load_value(source: &PeriodicTimerSource, value: u32) {
 /// Read how many clock cycles have occured since the system was turned on.
 #[inline]
 #[no_mangle]
-pub fn pit_read_lifetime() -> u64 {
-    let lifetime_high: u64 = read_word(addrs::PIT + 0xE0) as u64;
-    let lifetime_low: u64 = read_word(addrs::PIT + 0xE4) as u64;
+pub fn pit_read_lifetime() -> u128 {
+    let lifetime_high: u128 = read_word(addrs::PIT + 0xE0) as u128;
+    let lifetime_low: u128 = read_word(addrs::PIT + 0xE4) as u128;
 
     return 0xFFFF_FFFF_FFFF_FFFF - ((lifetime_high << 32) + lifetime_low);
 }

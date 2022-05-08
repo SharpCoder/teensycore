@@ -16,8 +16,8 @@ type ExecFn = fn();
 pub struct Gate {
     pub conditions: Vector::<CondFn>,
     pub functions: Vector::<ExecFn>,
-    pub durations: Vector::<u64>,
-    pub target_times: Vector::<u64>,
+    pub durations: Vector::<uNano>,
+    pub target_times: Vector::<uNano>,
     pub current_index: usize,
     pub tail: usize,
     pub sealed: bool,
@@ -82,7 +82,7 @@ impl Gate {
         return self;
     }
 
-    pub fn when_nano(&mut self, duration_nanos: u64, then: ExecFn) -> &mut Self {
+    pub fn when_nano(&mut self, duration_nanos: uNano, then: ExecFn) -> &mut Self {
         if self.compiled {
             return self;
         }

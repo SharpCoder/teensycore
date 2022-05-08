@@ -1,4 +1,5 @@
 use crate::{math::*, MS_TO_NANO};
+use crate::clock::uNano;
 use crate::phys::pins::*;
 use crate::serio::*;
 use crate::*;
@@ -12,13 +13,13 @@ pub struct BlinkConfig {
 #[derive(Copy, Clone)]
 pub enum Speed {
     /// One second
-    Slow = (crate::MS_TO_NANO * 1000u64) as isize,
+    Slow = (crate::MS_TO_NANO * 1000 as uNano) as isize,
 
     /// 350ms
-    Fast = (crate::MS_TO_NANO * 350u64) as isize,
+    Fast = (crate::MS_TO_NANO * 350 as uNano) as isize,
 
     /// 700ms
-    Normal = (crate::MS_TO_NANO * 700u64) as isize,
+    Normal = (crate::MS_TO_NANO * 700 as uNano) as isize,
 }
 
 pub static mut BLINK_CONFIG: BlinkConfig = BlinkConfig {
@@ -69,7 +70,7 @@ pub fn blink_hardware(count: u8) {
 
 const DEBUG_SERIAL_ENABLED: bool = true;
 
-pub fn blink_custom(on_time: u64, off_time: u64) {
+pub fn blink_custom(on_time: uNano, off_time: uNano) {
     blink_led_on();
     wait_ns(on_time);
     blink_led_off();

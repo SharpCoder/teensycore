@@ -32,13 +32,14 @@ use core::arch::asm;
 use core::arch::global_asm;
 use phys::irq::*;
 use phys::pins::*;
+use crate::clock::uNano;
 use crate::fastdivide::*;
 
 pub static mut WAIT_DIVIDER: Option<DividerU64> = None;
 
-pub const S_TO_NANO: u64 = 1000000000;
-pub const MS_TO_NANO: u64 = S_TO_NANO / 1000;   
-pub const MICRO_TO_NANO: u64 = 1000;
+pub const S_TO_NANO: uNano = 1000000000;
+pub const MS_TO_NANO: uNano = S_TO_NANO / 1000;   
+pub const MICRO_TO_NANO: uNano = 1000;
 
 /// This is the primary macro necessary to bootstrap your application.
 /// It takes a code block that will be used as the entrypoint to your
@@ -63,36 +64,38 @@ macro_rules! main {
         #[no_mangle]
         pub fn main() {
 
-            // Setup wait divider used for time keeping.
-            unsafe {
-                teensycore::WAIT_DIVIDER = Some(DividerU64::divide_by(1848));
+            loop {
+                // Setup wait divider used for time keeping.
+                unsafe {
+                    teensycore::WAIT_DIVIDER = Some(DividerU64::divide_by(1848));
+                }
+                
+                // Initialize irq system, (disables all interrupts)
+                disable_interrupts();
+
+                // Initialize clocks
+                phys_clocks_en();
+
+                // Ignite system clock for keeping track of millis()
+                // which is also used for the wait implementation.
+                clock_init();
+
+                // Make the LED pin an output
+                pin_mode(13, Mode::Output);
+
+                // Setup serial
+                serial_init(SerioDevice::Default);
+                serial_init(SerioDevice::Debug);
+
+                // Enable interrupts across the system
+                enable_interrupts();
+                
+                // Memory test zeros out the entire boundary of
+                // accessible ram
+                mem::memtest();
+
+                $app_code
             }
-            
-            // Initialize irq system, (disables all interrupts)
-            disable_interrupts();
-
-            // Initialize clocks
-            phys_clocks_en();
-
-            // Ignite system clock for keeping track of millis()
-            // which is also used for the wait implementation.
-            clock_init();
-
-            // Make the LED pin an output
-            pin_mode(13, Mode::Output);
-
-            // Setup serial
-            serial_init(SerioDevice::Default);
-            serial_init(SerioDevice::Debug);
-
-            // Enable interrupts across the system
-            enable_interrupts();
-            
-            // Memory test zeros out the entire boundary of
-            // accessible ram
-            mem::memtest();
-
-            $app_code
         }
 
         #[lang = "eh_personality"]
@@ -141,13 +144,13 @@ macro_rules! assembly {
 /// use teensycore::*;
 /// wait_ns(S_TO_NANO * 1);
 /// ```
-pub fn wait_ns(nano: u64) {
+pub fn wait_ns(nano: uNano) {
     wait_exact_ns(nano);
 }
 
 #[inline]
 #[no_mangle]
-pub fn wait_exact_ns(nano: u64) {
+pub fn wait_exact_ns(nano: uNano) {
     // This is the default overhead
     let cycles = (nano - 55) / 10;
     for _ in 0 .. cycles {

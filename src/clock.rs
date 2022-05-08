@@ -5,9 +5,14 @@ use crate::fastdivide::*;
 use crate::phys::*;
 use crate::phys::periodic_timers::*;    
 
+static mut HAS_OVERFLOWED: bool = false;
 static mut CLOCK_DIVIDER: Option<DividerU64> = None;
+static mut OFFSET: u64 = 0;
+
+pub type uNano = u128;
 
 pub fn clock_init() {
+
     // Setup clock
     periodic_timers::pit_start_clock();
     
@@ -16,7 +21,9 @@ pub fn clock_init() {
     
     // Setup clock divider used for time keeping.
     unsafe {
+        HAS_OVERFLOWED = false;
         CLOCK_DIVIDER = Some(DividerU64::divide_by(1848));
+        OFFSET = 0;
     }
     
     // Set CTRL 0
@@ -44,7 +51,11 @@ pub fn clock_init() {
 }
 
 
-pub fn nanos() -> u64 {
+pub fn has_overflowed() -> bool {
+    return unsafe { HAS_OVERFLOWED };
+}
+
+pub fn nanos() -> uNano {
     // The periodic timer clock is configured to be 132MHz which
     // is 7.5757575 nanoseconds per tick.
     //
@@ -64,7 +75,19 @@ pub fn nanos() -> u64 {
     return match unsafe { CLOCK_DIVIDER } {
         None => 0,
         Some(divider) => {
-            return divider.divide(pit_read_lifetime() * 14000);
+
+            let max: u128 = u64::MAX as u128;
+            let time: u128 = pit_read_lifetime() * 14000;
+            
+            // If we have overflowed a u64 then
+            // calculate how much we have overflowed, save that
+            // reset the timer, and then start again.
+            if time > max {
+                unsafe { HAS_OVERFLOWED = true };                               
+            }
+
+            return ((pit_read_lifetime() * 14000) / 1848) as uNano;
+            //return divider.divide((pit_read_lifetime() * 14000) as u64);
         }
     }
 }
