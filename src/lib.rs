@@ -142,8 +142,7 @@ pub fn wait_ns(nano: uNano) {
 #[inline]
 #[no_mangle]
 pub fn wait_exact_ns(nano: uNano) {
-    // This is the default overhead
-    let cycles = (nano - 55) / 100;
+    let cycles = (((nano - 55) as f32) / 7.5454) as u32;
     for _ in 0 .. cycles {
         assembly!("nop");
     }
