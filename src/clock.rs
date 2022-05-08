@@ -1,14 +1,10 @@
-use crate::fastdivide::*;
 /**
  *  This is a system device which keeps track of time by using the periodic timer 
  **/
 use crate::phys::*;
 use crate::phys::periodic_timers::*;    
 
-static mut HAS_OVERFLOWED: bool = false;
-static mut CLOCK_DIVIDER: Option<DividerU64> = None;
-static mut OFFSET: u64 = 0;
-
+#[allow(non_camel_case_types)]
 pub type uNano = u128;
 
 pub fn clock_init() {
@@ -18,13 +14,6 @@ pub fn clock_init() {
     
     // // Undo clock gating
     assign(addrs::CCM_CCGR1, read_word(addrs::CCM_CCGR1) | (0x3 << 12));
-    
-    // Setup clock divider used for time keeping.
-    unsafe {
-        HAS_OVERFLOWED = false;
-        CLOCK_DIVIDER = Some(DividerU64::divide_by(1848));
-        OFFSET = 0;
-    }
     
     // Set CTRL 0
     pit_configure(&PeriodicTimerSource::Timer1, PITConfig {
@@ -50,11 +39,7 @@ pub fn clock_init() {
     pit_restart(&PeriodicTimerSource::Timer0);
 }
 
-
-pub fn has_overflowed() -> bool {
-    return unsafe { HAS_OVERFLOWED };
-}
-
+#[no_mangle]
 pub fn nanos() -> uNano {
     // The periodic timer clock is configured to be 132MHz which
     // is 7.5757575 nanoseconds per tick.
@@ -72,22 +57,5 @@ pub fn nanos() -> uNano {
     // 
     // The end result is a perfectly accurate clock, as verified through
     // an external source (a separate arduino).
-    return match unsafe { CLOCK_DIVIDER } {
-        None => 0,
-        Some(divider) => {
-
-            let max: u128 = u64::MAX as u128;
-            let time: u128 = pit_read_lifetime() * 14000;
-            
-            // If we have overflowed a u64 then
-            // calculate how much we have overflowed, save that
-            // reset the timer, and then start again.
-            if time > max {
-                unsafe { HAS_OVERFLOWED = true };                               
-            }
-
-            return ((pit_read_lifetime() * 14000) / 1848) as uNano;
-            //return divider.divide((pit_read_lifetime() * 14000) as u64);
-        }
-    }
+    return (14000 * pit_read_lifetime() / 1848) as uNano;
 }

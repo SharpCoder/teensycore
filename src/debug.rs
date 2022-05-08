@@ -52,7 +52,7 @@ pub fn blink(count: u8, speed: Speed) {
 /// active.
 pub fn blink_accumulate() {
     unsafe {
-        BLINK_CONFIG.speed = Speed::Fast;
+        BLINK_CONFIG.speed = Speed::Slow;
         BLINK_CONFIG.remaining_count += 2;
     }
 }
