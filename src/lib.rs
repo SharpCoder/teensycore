@@ -138,11 +138,15 @@ pub fn wait_ns(nano: uNano) {
     wait_exact_ns(nano);
 }
 
+#[no_mangle]
+fn div(a: f32, b: f32) -> u32 {
+    return (a / b) as u32;
+}
 
 #[inline]
 #[no_mangle]
 pub fn wait_exact_ns(nano: uNano) {
-    let cycles = (((nano - 55) as f32) / 7.5454) as u32;
+    let cycles = div(nano as f32 - 98.0, 7.54);
     for _ in 0 .. cycles {
         assembly!("nop");
     }
