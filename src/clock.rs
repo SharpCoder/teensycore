@@ -57,5 +57,6 @@ pub fn nanos() -> uNano {
     // 
     // The end result is a perfectly accurate clock, as verified through
     // an external source (a separate arduino).
-    return ((14000 * pit_read_lifetime()) / 1848) as uNano;
+    let uptime_ticks = pit_read_lifetime() as uNano;
+    return ((uptime_ticks * 14000) / 1848) as uNano;
 }

@@ -46,6 +46,7 @@ macro_rules! main {
         use teensycore::*;
         use teensycore::clock::*;
         use teensycore::phys::*;
+        use teensycore::phys::pins::*;
         use teensycore::phys::irq::*;
         use teensycore::serio::*;
         use teensycore::mem::*;
