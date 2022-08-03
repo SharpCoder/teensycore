@@ -53,7 +53,7 @@ In order for your project to build correctly, you'll need the following:
 
 - Configure your project as a library
 - Put your entrypoint code in src/lib.rs
-- Download the build template [bash script](https://github.com/SharpCoder/teensycore/blob/main/build-template.sh)
+- Download the build template [bash script](https://raw.githubusercontent.com/SharpCoder/teensycore/main/build-template.sh)
 - Execute `build-template.sh` in lieu of `cargo build`.
 
 The build script will generate a `.hex` file and place it in a folder called `out`. This hex file is compatible with the teensy 4.0 and can be flashed with the teensy-loader utility.
