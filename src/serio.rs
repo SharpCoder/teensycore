@@ -218,7 +218,7 @@ impl Uart {
             parity_error_irq_en: false,
             tx_irq_en: false, // This gets set later
             rx_irq_en: true,
-            tx_complete_irq_en: false,
+            tx_complete_irq_en: true,
             idle_line_irq_en: true,
             tx_en: false,
             rx_en: false,
@@ -284,9 +284,10 @@ impl Uart {
         for byte_idx in 0 .. bytes.len() {
             self.tx_buffer.enqueue(bytes[byte_idx]);
         }
-
-        pin_out(self.tx_pin, Power::High);
+        
         uart_set_reg(self.device, &CTRL_TIE);
+        uart_set_reg(self.device, &CTRL_TCIE);
+        pin_out(self.tx_pin, Power::High);
     }
 
     pub fn write_vec(&mut self, bytes: &Vector<u8>) {
@@ -312,7 +313,7 @@ impl Uart {
         // let rx_active = irq_statuses & (0x1 << 24) > 0;
         // let rx_buffer_full = irq_statuses & (0x1 << 21) > 0;
         // let rx_idle = irq_statuses & (0x1 << 20) > 0;
-
+        
         // Read until it is empty
         let mut count = 0;
         while uart_has_data(self.device) {
@@ -354,8 +355,6 @@ impl Uart {
             }
         }
         
-        self.tx_count += 1;
-
         // Activate TCIE (Transmit Complete Interrupt Enable)
         uart_set_reg(self.device, &CTRL_TCIE);
     }
@@ -366,15 +365,9 @@ impl Uart {
         let tx_complete = irq_statuses & (0x1 << 22) > 0;
         let pending_data = self.tx_buffer.size() > 0;
 
-        if tx_complete && self.tx_count > 0 {
-            self.tx_count -= 1;
-        }
-
         // Check if there is space in the buffer
-        if pending_data {
-            for _ in self.tx_count .. 1 {
-                self.transmit();
-            }
+        if pending_data && tx_complete {
+            self.transmit();
         } else if !pending_data {
             // Disengage, I guess?
             uart_clear_reg(self.device, &CTRL_TIE);

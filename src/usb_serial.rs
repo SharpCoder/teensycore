@@ -2,7 +2,7 @@ use crate::*;
 use crate::{phys::usb::*, serio, system::str::*};
 
 pub fn usb_serial_init() {
-    serio::serial_write_str(serio::SerioDevice::Default, &str!(b"HI"));
+    serio::serial_write_str(serio::SerioDevice::Debug, &str!(b"HI\n"));
 
     usb_set_mode(UsbMode::DEVICE);
     usb_initialize_endpoints();
