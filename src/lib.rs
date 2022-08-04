@@ -194,7 +194,7 @@ pub fn err(mode: PanicType) {
                 pin_out(13, Power::High);
                 wait_ns(MS_TO_NANO * 50);
                 pin_out(13, Power::Low);
-                wait_ns(MS_TO_NANO * 500);
+                wait_ns(MS_TO_NANO * 1500);
             },
             PanicType::Memfault => {
                 pin_out(13, Power::High);
