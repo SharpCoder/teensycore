@@ -82,8 +82,11 @@ pub enum Irq {
     Uart6 = 25,
     Uart7 = 26,
     Uart8 = 29,
+    UsbPhy1 = 65, // UTMI0
+    UsbPhy2 = 66, // UTMI1
     Gpt1 = 100,
     Gpt2 = 101,
+    Usb = 113, // USB OTG1 (there is another, currently unsupported)
     PeriodicTimer = 122,
 }
 

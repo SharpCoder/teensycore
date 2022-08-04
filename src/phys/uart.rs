@@ -450,7 +450,7 @@ pub fn uart_watermark(device: Device, val: u32) {
 pub fn uart_enable_fifo(device: Device) {
     let addr = get_addr(device) + 0x28;
     assign(addr, read_word(addr) | (0x1 << 7));
-}
+}   
 
 pub fn uart_disable_fifo(device: Device) {
     let addr = get_addr(device) + 0x28;

@@ -103,6 +103,8 @@ pub const CCM_ANALOG_PLL_ARM_CLR: u32 = 0x400D_8008;
 /** DMA */
 pub const DMA: u32 = 0x400E_8000;
 pub const DMAMUX: u32 = 0x400E_C000;
+/** USB */
+pub const USB: u32 = 0x402E_0000;
 /** XBAR */
 pub const IMXRT_XBARA1: u32 = 0x403B_C000;
 pub const IMXRT_XBARB2: u32 = 0x403C_0000;

@@ -16,7 +16,7 @@ pub enum Speed {
     Slow = (crate::MS_TO_NANO * 1000 as uNano) as isize,
 
     /// 350ms
-    Fast = (crate::MS_TO_NANO * 350 as uNano) as isize,
+    Fast = (crate::MS_TO_NANO * 150 as uNano) as isize,
 
     /// 700ms
     Normal = (crate::MS_TO_NANO * 700 as uNano) as isize,
