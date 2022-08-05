@@ -1,27 +1,22 @@
-use crate::*;
-use crate::{phys::usb::*, serio, system::str::*};
+use crate::phys::usb::*;
+use crate::debug::*;
 
 pub fn usb_serial_init() {
-    serio::serial_write_str(serio::SerioDevice::Debug, &str!(b"HI\n"));
 
+    debug_str(b"[usb] Initializing endpoints");
     usb_set_mode(UsbMode::DEVICE);
     usb_initialize_endpoints();
     
     // Configure
-    usb_configure_endpoint(0, UsbEndpointDirection::RX, UsbEndpointConfig {
-        stall: false,
-        enabled: true,
-        reset: false,
-        endpoint_type: UsbEndpointType::CONTROL,
-    });
-
-    usb_configure_endpoint(1, UsbEndpointDirection::TX, UsbEndpointConfig {
-        stall: false,
-        enabled: true,
-        reset: false,
-        endpoint_type: UsbEndpointType::CONTROL,
-    });
+    // usb_configure_endpoint(1, UsbEndpointConfig {
+    //     stall: false,
+    //     reset: true,
+    //     enabled: true,
+    //     endpoint_type: UsbEndpointType::INTERRUPT,
+    // });
     
-    usb_irq_enable(USBINT | USBERRINT | PCI | URI);
-    usb_start();
+    usb_irq_enable(USBINT | USBERRINT | URI);
+    debug_str(b"[usb] enabled irq");
+    usb_restart();
+    debug_str(b"[usb] set start/run bit");
 }

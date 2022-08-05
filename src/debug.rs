@@ -79,6 +79,17 @@ pub fn blink_custom(on_time: uNano, off_time: uNano) {
 
 /// Write out a u32, in hex format, along with a string of data
 /// to Uart4. This is useful for debugging memory addresses.
+pub fn debug_binary(hex: u32, message: &[u8]) {
+    if DEBUG_SERIAL_ENABLED {
+        serial_write(SerioDevice::Debug, b"0b");
+        serial_write_str(SerioDevice::Debug, &itob(hex as u64, 2));
+        serial_write(SerioDevice::Debug, b" ");
+        debug_str(message);
+    }
+}
+
+/// Write out a u32, in hex format, along with a string of data
+/// to Uart4. This is useful for debugging memory addresses.
 pub fn debug_hex(hex: u32, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write(SerioDevice::Debug, b"0x");

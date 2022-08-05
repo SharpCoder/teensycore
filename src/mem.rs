@@ -134,6 +134,16 @@ pub fn memtest() {
 }
 
 #[cfg(not(feature = "testing"))]
+pub fn zero(addr: u32, bytes: u32) {
+    for byte in 0 .. bytes {
+        unsafe {
+            let ptr = (addr + byte) as *mut u32;
+            *ptr = 0;
+        }
+    }
+}
+
+#[cfg(not(feature = "testing"))]
 pub fn alloc_bytes(bytes: usize) -> *mut u32 {
     // Check for boundaries and reset if applicable.
     unsafe {
@@ -171,4 +181,9 @@ pub fn alloc<T>() -> *mut T {
 #[cfg(feature = "testing")]
 pub fn free<T>(_ptr: *mut T) {
     // Do nothing
+}
+
+#[cfg(feature = "testing")]
+pub fn zero(addr: u32, bytes: u32) {
+    
 }

@@ -1,9 +1,9 @@
 MEMORY
 {
-    ITCM (rwx):  ORIGIN = 0x00000000, LENGTH = 512K
-    DTCM (rwx):  ORIGIN = 0x20000000, LENGTH = 512K
-    RAM (rwx):   ORIGIN = 0x20200000, LENGTH = 512K
-    FLASH (rwx): ORIGIN = 0x60000000, LENGTH = 1984K
+    ITCM (rwx):   ORIGIN = 0x00000000, LENGTH = 512K
+    DTCM (rwx):   ORIGIN = 0x20000000, LENGTH = 512K
+    RAM (rwx):    ORIGIN = 0x20200000, LENGTH = 512K
+    FLASH (rwx):  ORIGIN = 0x60000000, LENGTH = 1984K
 }
 
 ENTRY(ImageVectorTable)
@@ -43,10 +43,19 @@ SECTIONS
         . = ALIGN(16);
         FILL(0x00)
         . += 4096;
+        /* 
+            So the USB peripheral requires the endpoints to be 2048 aligned
+            for mysterious reasons.
+        */        
+        . = ALIGN(2048);
+        *(.endpoint_queue) 
+        FILL(0x00)
+        . += 2048;
+        
         *(.rodata*)
         *(.data*)
         . = ALIGN(16);
-    } > DTCM  AT> FLASH
+    } > DTCM AT> FLASH
 
 
     .bss ALIGN(4) : {
