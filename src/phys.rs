@@ -10,7 +10,6 @@ pub mod pins;
 pub mod timer;
 pub mod uart;
 pub mod xbar;
-pub mod usb;
 
 pub enum Bitwise {
     Or, // Or with the existing value

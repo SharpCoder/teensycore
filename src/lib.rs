@@ -26,7 +26,6 @@ pub mod mem;
 pub mod phys;
 pub mod serio;
 pub mod system;
-pub mod usb_serial;
 pub mod i2c;
 
 use core::arch::asm;
@@ -53,7 +52,6 @@ macro_rules! main {
         use teensycore::serio::*;
         use teensycore::mem::*;
         use teensycore::system::map::*;
-        use teensycore::usb_serial::*;
         use teensycore::i2c::*;
         
         pub static mut GATES: BTreeMap::<u32, u32> = BTreeMap {
@@ -77,9 +75,6 @@ macro_rules! main {
 
                 // Make the LED pin an output
                 pin_mode(13, Mode::Output);
-
-                // Setup USB serial
-                usb_serial_init();
 
                 // Setup serial
                 serial_init(SerioDevice::Default);

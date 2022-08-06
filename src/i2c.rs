@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use crate::{wait_exact_ns, MS_TO_NANO};
+use crate::{wait_exact_ns};
 use crate::clock::*;
-use crate::debug::*;
 use crate::phys::pins::*;
 
 
@@ -56,9 +55,7 @@ impl I2C {
         };
     }
 
-    pub fn begin_transmission(&self, address: u8, write_mode: bool) {
-        debug_str(b"start transmission");
-
+    pub fn begin_transmission(&self, address: u8, write_mode: bool) -> bool {
         // Start transmission
         i2c_start_condition(&self);
 
@@ -79,9 +76,12 @@ impl I2C {
         // Ack bit
         let ack = i2c_read_bit(&self);
         if ack == false {
-            debug_str(b"transmission ack");
+            // Success
+            return true;
         } else {
-            debug_str(b"transmission not acknowledged");
+            // Transmissino not acknowledged. Terminate.
+            i2c_end_condition(&self);
+            return false;
         }
 
     }
@@ -90,7 +90,7 @@ impl I2C {
         i2c_end_condition(&self);
     }
 
-    pub fn write(&self, bytes: &[u8]) {
+    pub fn write(&self, bytes: &[u8]) -> bool {
         for byte in bytes {
             let mut mask = 0x1 << 7;
             for _ in 0 ..= 7 {
@@ -100,15 +100,17 @@ impl I2C {
             }
             let ack = i2c_read_bit(&self);
             if ack == false {
-                debug_str(b"ack");
+                // Success
             } else {
-                debug_str(b"err");
+                // Not acknowledged
+                i2c_end_condition(&self);
+                return false;
             }
         }
+        return true;
     }
 
     pub fn read(&self, ack: bool) -> u8 {
-        debug_str(b"start read");
         let mut byte: u8 = 0;
         let mut mask = 0x1 << 7;
 
@@ -120,6 +122,7 @@ impl I2C {
         }
 
         if ack {
+            // Send the ack bit
             i2c_write_bit(&self, false);
         }
 
@@ -131,10 +134,6 @@ impl I2C {
     }
 
 }
-
-const QUARTER: uNano = 10000 / 4;
-const HALF: uNano = QUARTER * 2;
-const FULL: uNano = QUARTER * 4;
 
 fn clock_high(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Output);
