@@ -36,6 +36,7 @@ pub const SEI: u32 = 1 << 4;
 pub const URI: u32 = 1 << 6;
 pub const SRI: u32 = 1 << 7;
 pub const SLI: u32 = 1 << 8;
+pub const HCH: u32 = 1 << 12;
 pub const TI0: u32 = 1 << 24;
 pub const TI1: u32 = 1 << 25;
 
@@ -47,6 +48,7 @@ pub struct UsbEndpointConfig {
     pub endpoint_type: UsbEndpointType,
 }
 
+#[repr(C)]
 struct UsbEndpointQueueHead {
     config: u32,
     current: u32,
@@ -83,6 +85,7 @@ impl UsbEndpointQueueHead {
 
 }
 
+#[repr(C)]
 struct UsbEndpointTransferDescriptor {
     next: u32,
     status: u32,
@@ -122,6 +125,16 @@ fn usb_endpoint_location() -> u32 {
     }
 }
 
+fn get_queue_head(queue: u32) -> *mut UsbEndpointQueueHead {
+    if queue > 16 {
+        // Invalid!!!
+        crate::err(crate::PanicType::Oob);
+    }
+
+    let addr = usb_endpoint_location() + queue * 64;
+    return addr as *mut UsbEndpointQueueHead;
+}
+
 pub fn usb_start_clock() {
     // Ungate the USB clock
     assign(0x400F_C000 + 0x80, read_word(0x400F_C000 + 0x80) | 0x3);
@@ -145,7 +158,9 @@ pub fn usb_start_clock() {
 pub fn usb_set_mode(mode: UsbMode) {
     match mode {
         UsbMode::DEVICE => {
-            assign(USB + 0x1A8, 0x2);
+            // Enter device mode and set the SLOM bit
+            wait_ns(100);
+            assign(USB + 0x1A8, 0x2 | (0x1 << 3));
         },
     }
 }
@@ -176,8 +191,8 @@ pub fn usb_initialize_endpoints() {
         zero(epaddr, 2048);
 
         // Load pointers to the relevant things
-        let endpoint0 = epaddr as *mut UsbEndpointQueueHead;
-        let endpoint1 = (epaddr + 64) as *mut UsbEndpointQueueHead;
+        let endpoint0 = get_queue_head(0);
+        let endpoint1 = get_queue_head(1);
 
         // Priming the headers
         // First, set max_packet_size
@@ -260,7 +275,20 @@ fn handle_usb_irq() {
     if setup_status > 0 {
         debug_str(b"[usb] setup_status detected");
     }
+
+    let nak_status = read_word(USB + 0x178);
+    if nak_status > 0 {
+        debug_str(b"[usb] nak requested");
+    }
     
+    if (irq_status & HCH) > 0 {
+        debug_str(b"[usb] DCHalted!!!!!!!!!");
+    }
+
+    let endpoint_primed = read_word(USB + 0x1B0);
+    debug_binary(endpoint_primed, b"[usb] endpoint primed");
+    debug_hex(read_word(USB + 0x1C0), b"[usb] endpoint0 control");
+
     if (irq_status & PCI) > 0 {
         debug_str(b" -> [usb] PCI flag detected");
         
@@ -271,6 +299,11 @@ fn handle_usb_irq() {
         } else {
             debug_str(b"[usb] lowspeed");
         }
+
+        debug_hex(read_word(USB + 0x184), b"[usb] port status");
+        // Mark it as primed
+        // let original = read_word(USB + 0x1B0);
+        // assign(USB + 0x1B0, original | 0x1 | (0x1 << 16));
     }
 
     if (irq_status & SRI) > 0 {
@@ -334,13 +367,20 @@ fn handle_usb_irq() {
 
     // Output the packet of data for endpoint0RX
     unsafe {
-        let endpoint0 = usb_endpoint_location() as *mut UsbEndpointQueueHead;
+        let endpoint0 = get_queue_head(0);
         debug_binary(read_word(USB + 0x1B8), b"Endpoint Status");
         debug_hex((*endpoint0).config, b"config");
         debug_hex((*endpoint0).current, b"current");
         debug_hex((*endpoint0).next, b"next");
         debug_hex((*endpoint0).status, b"status");
         debug_hex((*endpoint0).pointer0, b"pointer0");
+        debug_hex((*endpoint0).pointer1, b"pointer1");
+        debug_hex((*endpoint0).pointer2, b"pointer2");
+        debug_hex((*endpoint0).pointer3, b"pointer3");
+        debug_hex((*endpoint0).pointer4, b"pointer4");
+        debug_hex((*endpoint0).setup0, b"setup0");
+        debug_hex((*endpoint0).setup1, b"setup1");
+        debug_hex((*endpoint0).first_transfer, b"first_transfer");
     }
 
     debug_str(b"[usb] irq serviced");

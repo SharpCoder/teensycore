@@ -27,6 +27,7 @@ pub mod phys;
 pub mod serio;
 pub mod system;
 pub mod usb_serial;
+pub mod i2c;
 
 use core::arch::asm;
 use core::arch::global_asm;
@@ -53,6 +54,7 @@ macro_rules! main {
         use teensycore::mem::*;
         use teensycore::system::map::*;
         use teensycore::usb_serial::*;
+        use teensycore::i2c::*;
         
         pub static mut GATES: BTreeMap::<u32, u32> = BTreeMap {
             root: None,
