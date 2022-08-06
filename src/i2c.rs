@@ -12,13 +12,27 @@ pub enum I2CSpeed {
     Normal100kHz = 2500,
 }
 
+/// Represents a two-wire i2c controller.
 pub struct I2C {
+    /// The pin (as described on the board itself) referencing the sda line.
     sda_pin: usize,
+    /// The pin (as described on the board itself) referencing the scl line.
     scl_pin: usize,
+    /// The speed at which to drive the clock signals.
     speed: I2CSpeed,
 }
 
 impl I2C {
+    /// This method creates a new instance of an i2c controller.
+    /// After specifying the pins on which sda and scl lines reside,
+    /// the system will configure those pins as open-drain.
+    /// 
+    /// This means you must have a pull-down resistor for each
+    /// line on your circuit.
+    /// 
+    /// ```
+    /// let mut wire = I2C::Begin(19, 18);
+    /// ```
     pub fn begin(sda: usize, scl: usize) -> Self {
 
         pin_pad_config(sda, PadConfig { 
@@ -55,6 +69,13 @@ impl I2C {
         };
     }
 
+    /// This method begins a new i2c transmission by sending
+    /// the start condition signal and then transmitting
+    /// the device select packet.
+    /// 
+    /// If the write_mode parameter is true, the R/W bit will
+    /// be 0, signalling to the downstream devices that
+    /// a write operation will follow.
     pub fn begin_transmission(&self, address: u8, write_mode: bool) -> bool {
         // Start transmission
         i2c_start_condition(&self);
@@ -86,10 +107,26 @@ impl I2C {
 
     }
 
-    pub fn end_transmission(&self, address: u8) {
+    /// This method terminates an existing i2c transmission by 
+    /// sending the stop condition signal.
+    pub fn end_transmission(&self) {
         i2c_end_condition(&self);
     }
 
+    /// This method will write a series of bytes to
+    /// the i2c bus. After each byte, the controller
+    /// will expect an acknowledgement.
+    /// 
+    /// In order to use this method successfully,
+    /// you must first have invoked `i2c.begin_transmission()`
+    /// 
+    /// ```
+    /// let mut wire = I2C::begin(19, 18);
+    /// wire.begin_transmission(0x50, true)
+    /// wire.write(&[0, 0]);
+    /// wire.write(b"hello");
+    /// wire.end_transmission();
+    /// ```
     pub fn write(&self, bytes: &[u8]) -> bool {
         for byte in bytes {
             let mut mask = 0x1 << 7;
@@ -110,6 +147,29 @@ impl I2C {
         return true;
     }
 
+
+    /// This method will read a single byte
+    /// from the downstream device.
+    /// 
+    /// If the ack parameter is true, after reading
+    /// from the downstream device, the teensy will
+    /// send an acknowledgement bit.
+    /// 
+    /// In order to use this method successfully,
+    /// you must first have invoked `i2c.begin_transmission()`
+    /// 
+    /// ```
+    /// let mut wire = I2C::begin(19, 18);
+    /// wire.begin_transmission(0x50, true)
+    /// let str = &[
+    ///     wire.read(true),
+    ///     wire.read(true),
+    ///     wire.read(true),
+    ///     wire.read(true),
+    ///     wire.read(true),
+    /// ];
+    /// wire.end_transmission();
+    /// ```
     pub fn read(&self, ack: bool) -> u8 {
         let mut byte: u8 = 0;
         let mut mask = 0x1 << 7;
@@ -129,6 +189,14 @@ impl I2C {
         return byte;
     }
 
+    /// This method will change the signal speed.
+    /// By default, all signals are clocked at 100kHz
+    /// but if you upgrade to fast mode, it'll be 400kHz.
+    /// 
+    /// ```
+    /// let mut wire = I2C::Begin(19, 18);
+    /// wire.set_speed(I2CSpeed::Fast400kHz);
+    /// ```
     pub fn set_speed(&mut self, speed: I2CSpeed) {
         self.speed = speed;
     }
