@@ -1,5 +1,3 @@
-//! Mem
-//! 
 //! This module represents paged memory functionality, alloc(), and free().
 //! 
 //! Used mostly by internal packages. Be aware that most things which get

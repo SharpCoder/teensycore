@@ -1,5 +1,3 @@
-//! System
-//! 
 //! A collection of datastructures to aid in
 //! general development.
 

@@ -1,5 +1,3 @@
-//! Vector
-//! 
 //! A basic linked-list implementation
 //! which supports push/pop/enqueue/dequeue
 //! as well as random reads and puts.

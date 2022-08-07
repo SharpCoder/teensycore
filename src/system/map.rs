@@ -1,5 +1,3 @@
-//! Map
-//! 
 //! A binary-search backed Map. Similar to BTreeMap.
 use crate::mem::*;
 use core::cmp::*;

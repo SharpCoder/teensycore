@@ -1,5 +1,3 @@
-//! Buffer
-//! 
 //! A datastructure which supports stack
 //! and queue operations, but is fixed
 //! length and does not invoke alloc().
