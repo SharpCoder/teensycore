@@ -33,7 +33,7 @@ impl I2C {
     /// After specifying the pins on which sda and scl lines reside,
     /// the system will configure those pins as open-drain.
     /// 
-    /// This means you must have a pull-down resistor for each
+    /// This means you must have a pull-up resistor for each
     /// line on your circuit.
     /// 
     /// ```
