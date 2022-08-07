@@ -265,10 +265,12 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
         if clock_line == 0 && now < stretch_timeout {
             // We are stretching the signal
             continue;
-        } else if now > timeout {
-            break;
         } else if data_line == 0 {
             res = false;
+        }
+
+        if now > timeout {
+            break;
         }
 
         wait_exact_ns(500);

@@ -82,7 +82,7 @@ pub fn blink_custom(on_time: uNano, off_time: uNano) {
 pub fn debug_binary(hex: u32, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write(SerioDevice::Debug, b"0b");
-        serial_write_str(SerioDevice::Debug, &itob(hex as u64, 2));
+        serial_write_str(SerioDevice::Debug, &mut itob(hex as u64, 2));
         serial_write(SerioDevice::Debug, b" ");
         debug_str(message);
     }
@@ -93,7 +93,7 @@ pub fn debug_binary(hex: u32, message: &[u8]) {
 pub fn debug_hex(hex: u32, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
         serial_write(SerioDevice::Debug, b"0x");
-        serial_write_str(SerioDevice::Debug, &itob(hex as u64, 16));
+        serial_write_str(SerioDevice::Debug, &mut itob(hex as u64, 16));
         serial_write(SerioDevice::Debug, b" ");
         debug_str(message);
     }
@@ -102,7 +102,7 @@ pub fn debug_hex(hex: u32, message: &[u8]) {
 /// Write out a u64 number and a string of data to Uart4
 pub fn debug_u64(val: u64, message: &[u8]) {
     if DEBUG_SERIAL_ENABLED {
-        serial_write_str(SerioDevice::Debug, &itoa(val));
+        serial_write_str(SerioDevice::Debug, &mut itoa(val));
         serial_write(SerioDevice::Debug, b" ");
         debug_str(message);
     }

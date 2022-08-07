@@ -2,7 +2,7 @@
 
 use core::arch::asm;
 use crate::phys::addrs;
-use crate::phys::*;
+use crate::{phys::*, wait_exact_ns};
 
 const CTRL_BASE_REG: u32 = 0x18;
 const DATA_BASE_REG: u32 = 0x1C;
@@ -207,6 +207,7 @@ pub struct UartConfig {
     pub parity_type: ParityType,
 }
 
+#[inline]
 fn set_bit_from_bool_without_clear(baseline: u32, bit: u8, value: bool) -> u32 {
     if value {
         return set_bit(baseline, bit);
@@ -273,7 +274,6 @@ fn config_to_u32(config: &UartConfig, baseline: u32) -> u32 {
 pub fn uart_start_clock() {
     // First, select the oscillator clock so all the math works
     assign(0x400F_C024, read_word(0x400F_C024) & !0x1F & !(0x1 << 6));
-
     assign(0x400FC07C, read_word(0x400FC07C) | (0x3 << 24));
     assign(0x400F_C074, read_word(0x400F_C074) | (0x3 << 2) | (0x3 << 6));
     assign(0x400F_C06C, read_word(0x400F_C06C) | (0x3 << 24));
@@ -304,7 +304,7 @@ pub fn uart_sw_reset(device: Device, sw_reset: bool) {
     assign(get_addr(device) + 0x8, value);
 
     // Solves what I believe is a timing issue.
-    unsafe { asm!("nop"); }
+    wait_exact_ns(1);
 }
 
 pub fn uart_configure(device: Device, configuration: UartConfig) {
@@ -411,7 +411,6 @@ pub fn uart_has_data(device: Device) -> bool {
 pub fn uart_baud_rate(device: Device, rate: u32) {
     // TODO: Explain why this works (if it works)
     let baud_clock = 80000000; // MHz
-    
     let sbr = baud_clock / (rate * 16);
     uart_disable(device);
     let addr = get_addr(device) + 0x10;
@@ -472,18 +471,17 @@ pub struct UartClearIrqConfig {
     pub tx_empty: bool,
 }
 
-pub fn uart_clear_irq(device: Device, config: UartClearIrqConfig) {
+pub const RX_LINEBREAK_INT: u32 = 1 << 31;
+pub const RX_PIN_ACTIVE_INT: u32 = 1 << 30;
+pub const RX_SET_DATA_INVERTED: u32 = 1 << 28;
+pub const RX_DATA_FULL_INT: u32 = 1 << 21;
+pub const RX_IDLE_INT: u32 = 1 << 20;
+pub const RX_OVERRUN_INT: u32 = 1 << 19;
+pub const NOISE_FLAG_INT: u32 = 1 << 18;
+pub const TX_EMPTY_INT: u32 = 1 << 23;
+pub const TX_COMPLETE_INT: u32 = 1 << 22;
+
+pub fn uart_clear_irq(device: Device) {
     let addr = get_addr(device) + 0x14;
-    let mut baseline = read_word(addr);
-
-    baseline = set_bit_from_bool_without_clear(baseline, 31, config.rx_line_break);
-    baseline = set_bit_from_bool_without_clear(baseline, 30, config.rx_pin_active);
-    baseline = set_bit_from_bool_without_clear(baseline, 28, config.rx_set_data_inverted);
-    baseline = set_bit_from_bool_without_clear(baseline, 23, config.tx_empty);
-    baseline = set_bit_from_bool_without_clear(baseline, 22, config.tx_complete);
-    baseline = set_bit_from_bool_without_clear(baseline, 21, config.rx_data_full);
-    baseline = set_bit_from_bool_without_clear(baseline, 20, config.rx_idle);
-    baseline = set_bit_from_bool_without_clear(baseline, 19, config.rx_overrun);
-
-    assign(addr, baseline);
+    assign(addr, RX_LINEBREAK_INT | RX_PIN_ACTIVE_INT | RX_DATA_FULL_INT | RX_IDLE_INT | RX_OVERRUN_INT | NOISE_FLAG_INT | TX_EMPTY_INT | TX_COMPLETE_INT);
 }

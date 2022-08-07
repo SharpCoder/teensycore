@@ -285,7 +285,6 @@ impl Uart {
             self.tx_buffer.enqueue(bytes[byte_idx]);
         }
         
-        uart_set_reg(self.device, &CTRL_TIE);
         uart_set_reg(self.device, &CTRL_TCIE);
         pin_out(self.tx_pin, Power::High);
     }
@@ -296,7 +295,7 @@ impl Uart {
         }
 
         pin_out(self.tx_pin, Power::High);
-        uart_set_reg(self.device, &CTRL_TIE);
+        uart_set_reg(self.device, &CTRL_TCIE);
     }
 
     pub fn get_rx_buffer(&mut self) -> &mut Str {
@@ -332,17 +331,6 @@ impl Uart {
         if rx_overrun {
             crate::debug::blink_accumulate();
         }
-            
-        uart_clear_irq(self.device, UartClearIrqConfig {
-            rx_data_full: true,
-            rx_idle: true,
-            rx_line_break: true,
-            rx_overrun: true,
-            rx_pin_active: true,
-            rx_set_data_inverted: false,
-            tx_complete: false,
-            tx_empty: false,
-        });
     }
     
     fn transmit(&mut self) {
@@ -354,9 +342,6 @@ impl Uart {
                 uart_write_fifo(self.device, byte);
             }
         }
-        
-        // Activate TCIE (Transmit Complete Interrupt Enable)
-        uart_set_reg(self.device, &CTRL_TCIE);
     }
 
     fn handle_send_irq(&mut self) {
@@ -368,20 +353,9 @@ impl Uart {
         // Check if there is space in the buffer
         if pending_data && tx_complete {
             self.transmit();
-        } else if !pending_data {
-            // Disengage, I guess?
-            uart_clear_reg(self.device, &CTRL_TIE);
+        }
+         else if !pending_data {
             uart_clear_reg(self.device, &CTRL_TCIE);
-            uart_clear_irq(self.device, UartClearIrqConfig {
-                rx_data_full: false,
-                rx_idle: false,
-                rx_line_break: false,
-                rx_overrun: false,
-                rx_pin_active: false,
-                rx_set_data_inverted: false,
-                tx_complete: true,
-                tx_empty: true,
-            });
         }
     }
 
@@ -392,9 +366,11 @@ impl Uart {
             return;
         }
 
-        // This prevents circular calls
+        disable_interrupts();
         self.handle_receive_irq();
         self.handle_send_irq();
+        uart_clear_irq(self.device);
+        enable_interrupts();
     }
 }
 
@@ -455,11 +431,16 @@ pub fn serial_write(device: SerioDevice, bytes: &[u8]) {
     uart.write(bytes);
 }
 
-pub fn serial_write_str(device: SerioDevice, bytes: &Str) {
+pub fn serial_write_str(device: SerioDevice, bytes: &mut Str) {
     let uart = get_uart_interface(device);
     for byte in bytes.into_iter() {
         uart.write(&[byte]);
     }
+
+    // Fixes memory leak. When calling this function you'll
+    // usually be operating with an intermediary string and
+    // won't be able to drop() it yourself.
+    bytes.drop();    
 }
 
 pub fn serial_baud(device: SerioDevice, rate: u32) {
@@ -468,12 +449,10 @@ pub fn serial_baud(device: SerioDevice, rate: u32) {
 }
 
 pub fn serio_handle_irq() {
-    disable_interrupts();
     get_uart_interface(SerioDevice::Uart1).handle_irq();
     get_uart_interface(SerioDevice::Uart2).handle_irq();
     get_uart_interface(SerioDevice::Uart3).handle_irq();
     get_uart_interface(SerioDevice::Uart4).handle_irq();
     get_uart_interface(SerioDevice::Uart5).handle_irq();
     get_uart_interface(SerioDevice::Uart6).handle_irq();
-    enable_interrupts();
 }
