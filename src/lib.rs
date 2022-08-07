@@ -34,8 +34,43 @@ use phys::irq::*;
 use phys::pins::*;
 use crate::clock::uNano;
 
+/// Returns how many nanos are in a second
+/// 
+/// ```no_run
+/// use teensycore::*;
+/// let target_time = nanos() + 2 * S_TO_NANO;
+/// loop {
+///     if nanos() > target_time {
+///         break;
+///     }
+/// }
+/// ```
 pub const S_TO_NANO: uNano = 1000000000;
+
+/// Returns how many nanos are in a millisecond
+/// 
+/// ```no_run
+/// use teensycore::*;
+/// let target_time = nanos() + 2 * MS_TO_NANO;
+/// loop {
+///     if nanos() > target_time {
+///         break;
+///     }
+/// }
+/// ```
 pub const MS_TO_NANO: uNano = S_TO_NANO / 1000;   
+
+/// Returns how many nanos are in a microsecond
+/// 
+/// ```no_run
+/// use teensycore::*;
+/// let target_time = nanos() + 2 * MICRO_TO_NANO;
+/// loop {
+///     if nanos() > target_time {
+///         break;
+///     }
+/// }
+/// ```
 pub const MICRO_TO_NANO: uNano = 1000;
 
 /// This is the primary macro necessary to bootstrap your application.
@@ -110,6 +145,9 @@ pub trait Task {
 
 #[cfg(not(feature = "testing"))]
 #[macro_export]
+/// This method will call the asm! macro but
+/// in a way that doesn't break tests. Use it
+/// in lieu of the `asm!` macro.
 macro_rules! assembly {
     ($asm: tt) => {
         unsafe {
@@ -148,6 +186,13 @@ fn div(a: f32, b: f32) -> u32 {
 
 #[inline]
 #[no_mangle]
+/// This method will wait a certain amount of milliseconds
+/// by calculating how many `nop` commands it will take
+/// and issuing them sequentially.
+/// 
+/// This is extremely performant and has been used
+/// successfully to drive WS2812b LEDs which require
+/// nanosecond-specific timing.
 pub fn wait_exact_ns(nano: uNano) {
     let cycles = div(nano as f32 - 98.0, 7.54);
     for _ in 0 .. cycles {
@@ -180,6 +225,23 @@ pub enum PanicType {
 }
 
 #[no_mangle]
+/// Use this method to enter a system-wide failure event.
+/// 
+/// Based on the panic mode, the onboard LED will blink
+/// different patterns.
+/// 
+/// Hard failure of any generic kind (hardfault)
+/// LED is just on forever.
+/// 
+/// Out of bounds (oob)
+/// LED is on very briefly (50ms) and pulled low for 1.5s.
+/// 
+/// Memory Fault (memfault)
+/// LED is on for a long time (1.5s) and pulled low briefly (50ms).
+/// 
+/// This blink pattern will loop indefinitely and the system will
+/// be entirely inoperable. Reserved for catastrophic, non-recoverable
+/// situations.
 pub fn err(mode: PanicType) {
     disable_interrupts();
     loop {
@@ -204,6 +266,7 @@ pub fn err(mode: PanicType) {
 }
 
 #[no_mangle]
+/// Issue an out-of-bounds kernel panic.
 fn oob() {
     err(PanicType::Oob);
 }

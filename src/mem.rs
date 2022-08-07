@@ -1,3 +1,14 @@
+//! Mem
+//! 
+//! This module represents paged memory functionality, alloc(), and free().
+//! 
+//! Used mostly by internal packages. Be aware that most things which get
+//! alloc()'d need to be free()'d so the memory can be relcaimed.
+//! 
+//! Use at your own risk. Most system datastructures that are included
+//! with teensycore properly handle memory as best they can, and offer
+//! a `drop()` method which should be invoked as soon as the variable
+//! is no longer required.
 use core::mem::{size_of};
 
 #[cfg(not(test))]
@@ -115,14 +126,15 @@ impl Mempage {
     }
 }
 
+/// A debug method which returns true if we've begun
+/// recyclilng memory.
 pub fn is_overrun() -> bool {
     return unsafe { IS_OVERRUN };  
 }
 
-/// zero out every piece of memory.
-/// if we encounter a bad sector,
-/// the device will throw an oob irq
-/// and enter error mode.
+/// A method to zero out every piece of memory.
+/// If we encounter a bad sector, the device will throw an oob 
+/// irq and enter error mode.
 #[cfg(not(feature = "testing"))]
 pub fn memtest() {
     for addr in MEMORY_BEGIN_OFFSET .. MEMORY_MAXIMUM / 4 {
@@ -133,6 +145,8 @@ pub fn memtest() {
     }
 }
 
+/// This method will zero out a certain amount of bytes
+/// from a particular address.
 #[cfg(not(feature = "testing"))]
 pub fn zero(addr: u32, bytes: u32) {
     for byte in 0 .. bytes {
@@ -143,8 +157,13 @@ pub fn zero(addr: u32, bytes: u32) {
     }
 }
 
+/// Internal use only.
+/// 
+/// This method will allocate bytes on the heap and
+/// return a raw pointer to the freshly claimed area
+/// of memory.
 #[cfg(not(feature = "testing"))]
-pub fn alloc_bytes(bytes: usize) -> *mut u32 {
+fn alloc_bytes(bytes: usize) -> *mut u32 {
     // Check for boundaries and reset if applicable.
     unsafe {
         if MEMORY_OFFSET + bytes as u32 >= MEMORY_MAXIMUM {
@@ -158,13 +177,18 @@ pub fn alloc_bytes(bytes: usize) -> *mut u32 {
     }
 }
 
+/// This method will allocate a page of memory
+/// of any discreet struct. It then returns
+/// a raw pointer<T> to the location it just
+/// established.
 #[cfg(not(feature = "testing"))]
 pub fn alloc<T>() -> *mut T {
     let bytes = size_of::<T>();
     return Mempage::add_page(bytes);
 }
 
-/// Free a pointer by updating the pagefile
+/// Free a pointer by updating the pagefile, allowing
+/// other alloc() requests to begin reusing that space.
 #[cfg(not(feature = "testing"))]
 pub fn free<T>(ptr: *mut T) {
    let zero_ptr = ptr as u32;

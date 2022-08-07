@@ -1,3 +1,12 @@
+//! Buffer
+//! 
+//! A datastructure which supports stack
+//! and queue operations, but is fixed
+//! length and does not invoke alloc().
+//! 
+//! This is a good choice for buffers and
+//! generally fixed/length queues/stacks.
+//! It is used internall for the `serio` system.
 use crate::system::vector::*;
 
 /**

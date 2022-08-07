@@ -1,13 +1,24 @@
+//! This module represents basic math functionality
+//! that you might find useful in a kernel.
 use crate::system::str::*;
 
 // Buffer used for doing general math stuff
 static mut U64_BUF: [u8; 20] = [0; 20];
 
+/// Integer to ascii
 pub fn itoa(number: u64) -> Str {
     return itob(number, 10);
 }
 
-/// Integer to Base
+/// Integer to any discreet Base.
+/// 
+/// This method will take any number, a specific 
+/// base, and return a string representation of it.
+/// 
+/// ```
+/// // Return the binary representation of 532
+/// let mut str = itob(532, 2);
+/// ```
 pub fn itob(number: u64, radix: u64) -> Str {
     let mut temp = number;
     let mut size = 0;
@@ -57,6 +68,9 @@ pub fn interpolate(start: u32, end: u32, elapsed: u64, duration: u64) -> u32 {
     }
 }
 
+/// This method performs the mathematical
+/// power operation. (Pow). It multiplies
+/// base * base "power" amount of times.
 pub fn pow(base: u64, power: u64) -> u64 {
     if power == 0 {
         return 1;
@@ -72,7 +86,14 @@ pub fn pow(base: u64, power: u64) -> u64 {
     return result;
 }
 
-/// Ascii to integer
+/// Ascii to integer.
+/// 
+/// This method takes a string and
+/// attempts to parse numbers from it.
+/// 
+/// Please remember to call `.drop()` on the
+/// string once you are done. This is not
+/// included automatically.
 pub fn atoi(input: &Str) -> u64 {
     let mut inp_copy = Str::from_str(input);
     if inp_copy.len() == 0 {
@@ -112,6 +133,12 @@ pub fn atoi(input: &Str) -> u64 {
     return result;
 }
 
+/// This method takes a single ascii number
+/// 0 - 9 and returns the actual numeric
+/// representation of that number.
+/// 
+/// Basically it subtracts 48 from the ascii
+/// character.
 pub fn char_to_int(char: u8) -> u8 {
     return char - 48;
 }
@@ -160,6 +187,7 @@ pub fn rand() -> u64 {
     }
 }
 
+/// Use this method to seed the PRNG.
 pub fn seed_rand(val: u64) {
     unsafe {
         XORSHIFT_REGS[0] = val;

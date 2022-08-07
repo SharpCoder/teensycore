@@ -1,4 +1,3 @@
-
 use crate::system::vector::*;
 use core::cmp::{ *, Ordering };
 

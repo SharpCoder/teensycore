@@ -40,6 +40,8 @@ pub fn clock_init() {
 }
 
 #[no_mangle]
+/// This method returns the current uptime of the system
+/// in nanoseconds.
 pub fn nanos() -> uNano {
     // The periodic timer clock is configured to be 132MHz which
     // is 7.5757575 nanoseconds per tick.

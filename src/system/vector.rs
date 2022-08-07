@@ -1,3 +1,11 @@
+//! Vector
+//! 
+//! A basic linked-list implementation
+//! which supports push/pop/enqueue/dequeue
+//! as well as random reads and puts.
+//! 
+//! It is loosely modeled after the 
+//! JavaScript array.
 #![allow(dead_code)]
 use crate::{mem::{ alloc, free }, math::rand};
 use core::iter::{Iterator};
