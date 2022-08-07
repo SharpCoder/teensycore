@@ -1,3 +1,9 @@
+//! This module provides the ability to designate any two
+//! gpio pins as SDA/SCL which allows you to introduce i2c
+//! capabilities into your project.
+//! 
+//! In order to use these pins, you must include a pull-up
+//! resistor on both lines.
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
