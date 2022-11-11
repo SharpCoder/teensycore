@@ -35,7 +35,7 @@ teensycore::main!({
     // Perform read request
     wire.begin_transmission(0x50, false);
     // Use the `debug_str` functionality to output this data to the
-    // TX2 UART. Pin 8 on the teensy.
+    // TX2 UART. Pin 8 on the teensy. For debugging purposes.
     debug_str(&[
         // Send 'true' as the second parameter to include an ack
         // This tells the chip we wish to do sequential reads

@@ -4,13 +4,16 @@
 //! 
 //! In order to use these pins, you must include a pull-up
 //! resistor on both lines.
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 #![allow(unused_variables)]
 
-use crate::{wait_exact_ns};
+use core::arch::asm;
+use crate::debug::{debug_str, debug_binary, debug_u64, debug_hex};
+use crate::{wait_exact_ns, assembly};
 use crate::clock::*;
 use crate::phys::pins::*;
 
+const PAUSE: uNano = 1000;
 
 #[derive(Clone, Copy)]
 pub enum I2CSpeed {
@@ -62,11 +65,9 @@ impl I2C {
             drive_strength: DriveStrength::MaxDiv3, 
             fast_slew_rate: true 
         });
-
-        pin_mode(sda, Mode::Output);
-        pin_mode(scl, Mode::Output);
-        pin_out(sda, Power::High);
-        pin_out(scl, Power::High);
+        
+        pin_mode(scl, Mode::Input);
+        pin_mode(sda, Mode::Input);
 
         return I2C { 
             sda_pin: sda,
@@ -93,7 +94,7 @@ impl I2C {
             i2c_write_bit(&self, high > 0);
             mask >>= 1;
         }
-
+        
         // R/W bit
         if write_mode {
             i2c_write_bit(&self, false);
@@ -103,9 +104,11 @@ impl I2C {
         // Ack bit
         let ack = i2c_read_bit(&self);
         if ack == false {
+            // debug_str(b"ACK!");
             // Success
             return true;
         } else {
+            debug_str(b"failed to receive ack");
             // Transmissino not acknowledged. Terminate.
             i2c_end_condition(&self);
             return false;
@@ -146,7 +149,9 @@ impl I2C {
                 // Success
             } else {
                 // Not acknowledged
-                i2c_end_condition(&self);
+                debug_hex(bytes[0] as u32, b"failed write add");
+                debug_hex(bytes[1] as u32, b"failed write value");
+                // i2c_end_condition(&self);
                 return false;
             }
         }
@@ -190,9 +195,24 @@ impl I2C {
         if ack {
             // Send the ack bit
             i2c_write_bit(&self, false);
+        } else {
+            // Send the nack bit
+            i2c_write_bit(&self, true);
         }
 
+        // clock_release(&self);
+
         return byte;
+    }
+
+    pub fn read_burst<const T: usize>(&self) -> [u8; T] {
+        let mut bytes = [0; T];
+
+        for idx in 0 .. T {
+            bytes[idx] = self.read(true);
+        }
+        self.read(false);
+        return bytes;
     }
 
     /// This method will change the signal speed.
@@ -212,35 +232,35 @@ impl I2C {
 fn clock_high(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Output);
     pin_out(i2c.scl_pin, Power::High);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn clock_low(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Output);
     pin_out(i2c.scl_pin, Power::Low);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn data_high(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Output);
     pin_out(i2c.sda_pin, Power::High);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn data_low(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Output);
     pin_out(i2c.sda_pin, Power::Low);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn data_release(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Input);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn clock_release(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Input);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 
 fn i2c_start_condition(i2c: &I2C) {
@@ -268,8 +288,15 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
         let clock_line = pin_read(i2c.scl_pin);
         let data_line = pin_read(i2c.sda_pin);
 
-        if clock_line == 0 && now < stretch_timeout {
+
+        // if clock_line == 0 && now < stretch_timeout {
+        //     // We are stretching the signal
+        //     assembly!("nop");
+        //     continue;
+        // } else 
+        if clock_line == 0 && now >= timeout && now < stretch_timeout {
             // We are stretching the signal
+            assembly!("nop");
             continue;
         } else if data_line == 0 {
             res = false;
@@ -279,7 +306,7 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
             break;
         }
 
-        wait_exact_ns(500);
+        wait_exact_ns(PAUSE);
     }
 
     // Bring clock back down
@@ -312,8 +339,8 @@ fn i2c_write_bit(i2c: &I2C, high: bool) {
 
 fn i2c_end_condition(i2c: &I2C) {
     clock_release(&i2c);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
     data_release(&i2c);
-    wait_exact_ns(500);
+    wait_exact_ns(PAUSE);
 }
 

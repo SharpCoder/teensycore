@@ -1,4 +1,4 @@
-//! This module represents paged memory functionality, alloc(), and free().
+//! This module represents paged memory functionality alloc(), and free().
 //! 
 //! Used mostly by internal packages. Be aware that most things which get
 //! alloc()'d need to be free()'d so the memory can be relcaimed.
