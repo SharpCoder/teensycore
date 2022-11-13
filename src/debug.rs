@@ -90,13 +90,14 @@ pub fn print_f32(val: f32) {
             serial_write_str(SerioDevice::Debug, &mut str!(b"-"));
         }
 
+        let major = num as u32;
+        let decimal = ((num * 100.0) as u32) - major * 100;
+
         // Calculate the major value
-        serial_write_str(SerioDevice::Debug, &mut itoa(num as u64));
+        serial_write_str(SerioDevice::Debug, &mut itoa(major as u64));
         // Calculate the decimal places
         serial_write(SerioDevice::Debug, b".");
-        let major = num as u64;
-        let decimal = ((num * 100.0) as u64) - major * 100;
-        serial_write_str(SerioDevice::Debug, &mut itoa(decimal));
+        serial_write_str(SerioDevice::Debug, &mut itoa(decimal as u64));
     }
 }
 

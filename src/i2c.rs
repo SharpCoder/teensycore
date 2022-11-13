@@ -17,8 +17,9 @@ const PAUSE: uNano = 1000;
 
 #[derive(Clone, Copy)]
 pub enum I2CSpeed {
-    Fast400kHz = 1250,
+    Fast400kHz = 625,
     Normal100kHz = 2500,
+    Debug10kHz = 25000,
 }
 
 /// Represents a two-wire i2c controller.
@@ -29,6 +30,8 @@ pub struct I2C {
     scl_pin: usize,
     /// The speed at which to drive the clock signals.
     speed: I2CSpeed,
+    /// If true, debug messages will be written to SerioDebug
+    pub debug: bool,
 }
 
 impl I2C {
@@ -45,34 +48,35 @@ impl I2C {
     pub fn begin(sda: usize, scl: usize) -> Self {
 
         pin_pad_config(sda, PadConfig { 
-            hysterisis: true, 
+            hysterisis: false, 
             resistance: PullUpDown::PullUp22k, 
             pull_keep: PullKeep::Pull, 
             pull_keep_en: true, 
             open_drain: true, 
-            speed: PinSpeed::Medium100MHz, 
+            speed: PinSpeed::Max200MHz, 
             drive_strength: DriveStrength::MaxDiv3, 
             fast_slew_rate: true 
         });
 
         pin_pad_config(scl, PadConfig {
-            hysterisis: true, 
+            hysterisis: false, 
             resistance: PullUpDown::PullUp22k, 
             pull_keep: PullKeep::Pull, 
             pull_keep_en: true, 
             open_drain: true, 
-            speed: PinSpeed::Medium100MHz, 
+            speed: PinSpeed::Max200MHz, 
             drive_strength: DriveStrength::MaxDiv3, 
             fast_slew_rate: true 
         });
         
-        pin_mode(scl, Mode::Input);
-        pin_mode(sda, Mode::Input);
-
+        pin_mode(scl, Mode::Output);
+        pin_out(scl, Power::Low);
+    
         return I2C { 
             sda_pin: sda,
             scl_pin: scl,
             speed: I2CSpeed::Normal100kHz,
+            debug: false,
         };
     }
 
@@ -104,11 +108,12 @@ impl I2C {
         // Ack bit
         let ack = i2c_read_bit(&self);
         if ack == false {
-            // debug_str(b"ACK!");
             // Success
             return true;
         } else {
-            debug_str(b"failed to receive ack");
+            if self.debug {
+                debug_str(b"failed to receive ack");
+            }
             // Transmissino not acknowledged. Terminate.
             i2c_end_condition(&self);
             return false;
@@ -149,10 +154,12 @@ impl I2C {
                 // Success
             } else {
                 // Not acknowledged
-                debug_hex(bytes[0] as u32, b"failed write add");
-                debug_hex(bytes[1] as u32, b"failed write value");
-                // i2c_end_condition(&self);
-                return false;
+                if self.debug {
+                    debug_hex(bytes[0] as u32, b"[failed write] @ address");
+                    debug_hex(bytes[1] as u32, b"[failed value]");
+                }
+                
+                // return false;
             }
         }
         return true;
@@ -200,11 +207,23 @@ impl I2C {
             i2c_write_bit(&self, true);
         }
 
-        // clock_release(&self);
-
         return byte;
     }
 
+
+    /// This method will read a series of bytes in rapid
+    /// succession based from the currently open i2c device.
+    /// 
+    /// ```
+    /// let mut wire = I2C::begin(19, 18);
+    /// wire.begin_transmission(0xD, true);
+    /// wire.write(&[0x3B]);
+    /// wire.begin_transmission(0xD, false);
+    /// 
+    /// let bytes = wire.read_burst::<14>();
+    /// 
+    /// wire.end_transmission();
+    /// ``
     pub fn read_burst<const T: usize>(&self) -> [u8; T] {
         let mut bytes = [0; T];
 
@@ -227,44 +246,57 @@ impl I2C {
         self.speed = speed;
     }
 
+    /// This method will change the debug setting
+    /// for the i2d device. If true, debug information
+    /// will be output to the SerioDebug Serial channel
+    /// with some loose information about missed ACK
+    /// and NACK messages.
+    /// 
+    /// ```
+    /// let mut wire = I2C::Begin(19, 18);
+    /// wire.set_debug(true);
+    /// ```
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
+    }
+
 }
 
 fn clock_high(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Output);
     pin_out(i2c.scl_pin, Power::High);
-    wait_exact_ns(PAUSE);
 }
 
 fn clock_low(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Output);
     pin_out(i2c.scl_pin, Power::Low);
-    wait_exact_ns(PAUSE);
 }
 
 fn data_high(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Output);
     pin_out(i2c.sda_pin, Power::High);
-    wait_exact_ns(PAUSE);
 }
 
 fn data_low(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Output);
     pin_out(i2c.sda_pin, Power::Low);
-    wait_exact_ns(PAUSE);
 }
 
 fn data_release(i2c: &I2C) {
     pin_mode(i2c.sda_pin, Mode::Input);
-    wait_exact_ns(PAUSE);
 }
 
 fn clock_release(i2c: &I2C) {
     pin_mode(i2c.scl_pin, Mode::Input);
-    wait_exact_ns(PAUSE);
 }
 
 fn i2c_start_condition(i2c: &I2C) {
+    clock_high(&i2c);
+    wait_exact_ns(PAUSE);
+    data_high(&i2c);
+    wait_exact_ns(PAUSE);
     data_low(&i2c);
+    wait_exact_ns(PAUSE);
     clock_low(&i2c);
 }
 
@@ -276,9 +308,8 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
     // **************
     // Pulse the clock
     // **************
-    clock_release(&i2c);
+        clock_release(&i2c);
     let timeout = nanos() + (i2c.speed as uNano * 4);
-    let stretch_timeout = nanos() + (i2c.speed as uNano * 16);
     let mut res = true;
 
     loop {
@@ -289,16 +320,13 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
         let data_line = pin_read(i2c.sda_pin);
 
 
-        // if clock_line == 0 && now < stretch_timeout {
-        //     // We are stretching the signal
-        //     assembly!("nop");
-        //     continue;
-        // } else 
-        if clock_line == 0 && now >= timeout && now < stretch_timeout {
+        if clock_line == 0 {
             // We are stretching the signal
             assembly!("nop");
             continue;
-        } else if data_line == 0 {
+        } 
+        
+        if data_line == 0 {
             res = false;
         }
 
@@ -311,36 +339,37 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
 
     // Bring clock back down
     clock_low(&i2c);
-    data_low(&i2c);
 
     return res;
 }
 
 fn i2c_write_bit(i2c: &I2C, high: bool) {
+    clock_low(&i2c);
+
     if high {
         data_high(&i2c);
     } else {
         data_low(&i2c);
     }
-
-    // Wait
-    wait_exact_ns(i2c.speed as uNano);
+    
 
     // **************
     // Pulse the clock
     // **************
-    clock_release(&i2c);
-    wait_exact_ns((i2c.speed as uNano) * 2);
+    clock_high(&i2c);
+    wait_exact_ns((i2c.speed as uNano) * 3);
 
     // Pull clock low
     clock_low(&i2c);
-    wait_exact_ns(i2c.speed as uNano);
 }
 
 fn i2c_end_condition(i2c: &I2C) {
-    clock_release(&i2c);
+    clock_low(&i2c);
+    data_low(&i2c);
     wait_exact_ns(PAUSE);
-    data_release(&i2c);
+    clock_high(&i2c);
+    wait_exact_ns(PAUSE);
+    data_high(&i2c);
     wait_exact_ns(PAUSE);
 }
 
