@@ -11,12 +11,12 @@ pub fn itoa(number: u64) -> Str {
 }
 
 /// Integer to any discreet Base.
-/// 
-/// This method will take any number, a specific 
+///
+/// This method will take any number, a specific
 /// base, and return a string representation of it.
-/// 
-/// ```
-/// // Return the binary representation of 532
+///
+/// ```no_run
+/// use teensycore::math::*;
 /// let mut str = itob(532, 2);
 /// ```
 pub fn itob(number: u64, radix: u64) -> Str {
@@ -26,17 +26,18 @@ pub fn itob(number: u64, radix: u64) -> Str {
     loop {
         let element = temp % radix;
         temp /= radix;
-        unsafe { U64_BUF[size] = int_to_hex(element as u8); }
+        unsafe {
+            U64_BUF[size] = int_to_hex(element as u8);
+        }
         size += 1;
         if temp == 0 {
             break;
         }
-
     }
 
     // Reverse
     let mut tail = size - 1;
-    for idx in 0 .. size / 2 {        
+    for idx in 0..size / 2 {
         unsafe {
             let temp = U64_BUF[idx];
             U64_BUF[idx] = U64_BUF[tail];
@@ -57,7 +58,7 @@ pub fn interpolate(start: u32, end: u32, elapsed: u64, duration: u64) -> u32 {
     let x1 = duration as f32;
     let y1 = max(end, start) as f32;
     let x = min(elapsed, duration) as f32;
-    let delta = (x  * ((y1 - y0)/(x1 - x0))) as u32;
+    let delta = (x * ((y1 - y0) / (x1 - x0))) as u32;
 
     // Check if it's reversed. This is necessary because of
     // integer division and stuff.
@@ -74,12 +75,12 @@ pub fn interpolate(start: u32, end: u32, elapsed: u64, duration: u64) -> u32 {
 pub fn pow(base: u64, power: u64) -> u64 {
     if power == 0 {
         return 1;
-    } else if power == 1{
+    } else if power == 1 {
         return base;
     }
 
     let mut result = 1;
-    for _ in 0 .. power {
+    for _ in 0..power {
         result *= base;
     }
 
@@ -87,10 +88,10 @@ pub fn pow(base: u64, power: u64) -> u64 {
 }
 
 /// Ascii to integer.
-/// 
+///
 /// This method takes a string and
 /// attempts to parse numbers from it.
-/// 
+///
 /// Please remember to call `.drop()` on the
 /// string once you are done. This is not
 /// included automatically.
@@ -102,7 +103,7 @@ pub fn atoi(input: &Str) -> u64 {
 
     let mut result: u64 = 0;
     let mut digits: u64 = 0;
-    
+
     // Clear the buffer
     unsafe {
         U64_BUF = [0; 20];
@@ -111,14 +112,14 @@ pub fn atoi(input: &Str) -> u64 {
     // Copy input into buffer
     let size = inp_copy.len();
     let mut idx = 0;
-    let tail =  size - 1;
+    let tail = size - 1;
     for char in inp_copy.into_iter() {
         unsafe {
             U64_BUF[tail - idx] = char;
         }
         idx += 1;
     }
-    
+
     for character in unsafe { &U64_BUF[0..size] } {
         if *character >= 48 && *character <= 57 {
             result += char_to_int(*character) as u64 * pow(10, digits);
@@ -136,7 +137,7 @@ pub fn atoi(input: &Str) -> u64 {
 /// This method takes a single ascii number
 /// 0 - 9 and returns the actual numeric
 /// representation of that number.
-/// 
+///
 /// Basically it subtracts 48 from the ascii
 /// character.
 pub fn char_to_int(char: u8) -> u8 {
@@ -153,7 +154,7 @@ pub fn int_to_hex(number: u8) -> u8 {
 }
 
 /// Return the minimum of two comparable items.
-pub fn min<T: PartialOrd> (left: T, right: T) -> T {
+pub fn min<T: PartialOrd>(left: T, right: T) -> T {
     if left > right {
         return right;
     } else {
@@ -162,7 +163,7 @@ pub fn min<T: PartialOrd> (left: T, right: T) -> T {
 }
 
 /// Return the larger of two comparable items.
-pub fn max<T: PartialOrd> (left: T, right: T) -> T {
+pub fn max<T: PartialOrd>(left: T, right: T) -> T {
     if left > right {
         return left;
     } else {
@@ -173,7 +174,7 @@ pub fn max<T: PartialOrd> (left: T, right: T) -> T {
 // Amazing prng XORSHIFT+
 // https://en.wikipedia.org/wiki/Xorshift
 // 128 bits is kinda overkill though.
-static mut XORSHIFT_REGS: [u64;2] = [0xFAE0, 0xFFAA_FFDC];
+static mut XORSHIFT_REGS: [u64; 2] = [0xFAE0, 0xFFAA_FFDC];
 pub fn rand() -> u64 {
     unsafe {
         let mut t = XORSHIFT_REGS[0];
@@ -196,12 +197,12 @@ pub fn seed_rand(val: u64) {
 
 #[cfg(test)]
 mod test {
-    use crate::*;
     use super::*;
+    use crate::*;
 
     fn sb_eq(left: Str, right: Str) {
         assert_eq!(left.len(), right.len());
-        for idx in 0 .. left.len() {
+        for idx in 0..left.len() {
             assert_eq!(left.char_at(idx), right.char_at(idx));
         }
     }

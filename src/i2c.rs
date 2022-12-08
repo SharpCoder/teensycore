@@ -1,17 +1,17 @@
 //! This module provides the ability to designate any two
 //! gpio pins as SDA/SCL which allows you to introduce i2c
 //! capabilities into your project.
-//! 
+//!
 //! In order to use these pins, you must include a pull-up
 //! resistor on both lines.
 #![allow(dead_code, unused_imports)]
 #![allow(unused_variables)]
 
-use core::arch::asm;
-use crate::debug::{debug_str, debug_binary, debug_u64, debug_hex};
-use crate::{wait_exact_ns, assembly};
 use crate::clock::*;
+use crate::debug::{debug_binary, debug_hex, debug_str, debug_u64};
 use crate::phys::pins::*;
+use crate::{assembly, wait_exact_ns};
+use core::arch::asm;
 
 const PAUSE: uNano = 1000;
 
@@ -38,41 +38,47 @@ impl I2C {
     /// This method creates a new instance of an i2c controller.
     /// After specifying the pins on which sda and scl lines reside,
     /// the system will configure those pins as open-drain.
-    /// 
+    ///
     /// This means you must have a pull-up resistor for each
     /// line on your circuit.
-    /// 
-    /// ```
-    /// let mut wire = I2C::Begin(19, 18);
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
+    /// let mut wire = I2C::begin(19, 18);
     /// ```
     pub fn begin(sda: usize, scl: usize) -> Self {
+        pin_pad_config(
+            sda,
+            PadConfig {
+                hysterisis: false,
+                resistance: PullUpDown::PullUp22k,
+                pull_keep: PullKeep::Pull,
+                pull_keep_en: true,
+                open_drain: true,
+                speed: PinSpeed::Max200MHz,
+                drive_strength: DriveStrength::MaxDiv3,
+                fast_slew_rate: true,
+            },
+        );
 
-        pin_pad_config(sda, PadConfig { 
-            hysterisis: false, 
-            resistance: PullUpDown::PullUp22k, 
-            pull_keep: PullKeep::Pull, 
-            pull_keep_en: true, 
-            open_drain: true, 
-            speed: PinSpeed::Max200MHz, 
-            drive_strength: DriveStrength::MaxDiv3, 
-            fast_slew_rate: true 
-        });
+        pin_pad_config(
+            scl,
+            PadConfig {
+                hysterisis: false,
+                resistance: PullUpDown::PullUp22k,
+                pull_keep: PullKeep::Pull,
+                pull_keep_en: true,
+                open_drain: true,
+                speed: PinSpeed::Max200MHz,
+                drive_strength: DriveStrength::MaxDiv3,
+                fast_slew_rate: true,
+            },
+        );
 
-        pin_pad_config(scl, PadConfig {
-            hysterisis: false, 
-            resistance: PullUpDown::PullUp22k, 
-            pull_keep: PullKeep::Pull, 
-            pull_keep_en: true, 
-            open_drain: true, 
-            speed: PinSpeed::Max200MHz, 
-            drive_strength: DriveStrength::MaxDiv3, 
-            fast_slew_rate: true 
-        });
-        
         pin_mode(scl, Mode::Output);
         pin_out(scl, Power::Low);
-    
-        return I2C { 
+
+        return I2C {
             sda_pin: sda,
             scl_pin: scl,
             speed: I2CSpeed::Normal100kHz,
@@ -83,7 +89,7 @@ impl I2C {
     /// This method begins a new i2c transmission by sending
     /// the start condition signal and then transmitting
     /// the device select packet.
-    /// 
+    ///
     /// If the write_mode parameter is true, the R/W bit will
     /// be 0, signalling to the downstream devices that
     /// a write operation will follow.
@@ -93,12 +99,12 @@ impl I2C {
 
         // Address frame
         let mut mask = 0x1 << 6;
-        for _ in 0 ..= 6 {
+        for _ in 0..=6 {
             let high = address & mask;
             i2c_write_bit(&self, high > 0);
             mask >>= 1;
         }
-        
+
         // R/W bit
         if write_mode {
             i2c_write_bit(&self, false);
@@ -118,10 +124,9 @@ impl I2C {
             i2c_end_condition(&self);
             return false;
         }
-
     }
 
-    /// This method terminates an existing i2c transmission by 
+    /// This method terminates an existing i2c transmission by
     /// sending the stop condition signal.
     pub fn end_transmission(&self) {
         i2c_end_condition(&self);
@@ -130,13 +135,14 @@ impl I2C {
     /// This method will write a series of bytes to
     /// the i2c bus. After each byte, the controller
     /// will expect an acknowledgement.
-    /// 
+    ///
     /// In order to use this method successfully,
     /// you must first have invoked `i2c.begin_transmission()`
-    /// 
-    /// ```
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
     /// let mut wire = I2C::begin(19, 18);
-    /// wire.begin_transmission(0x50, true)
+    /// wire.begin_transmission(0x50, true);
     /// wire.write(&[0, 0]);
     /// wire.write(b"hello");
     /// wire.end_transmission();
@@ -144,7 +150,7 @@ impl I2C {
     pub fn write(&self, bytes: &[u8]) -> bool {
         for byte in bytes {
             let mut mask = 0x1 << 7;
-            for _ in 0 ..= 7 {
+            for _ in 0..=7 {
                 let high = byte & mask;
                 i2c_write_bit(&self, high > 0);
                 mask >>= 1;
@@ -158,27 +164,27 @@ impl I2C {
                     debug_hex(bytes[0] as u32, b"[failed write] @ address");
                     debug_hex(bytes[1] as u32, b"[failed value]");
                 }
-                
+
                 // return false;
             }
         }
         return true;
     }
 
-
     /// This method will read a single byte
     /// from the downstream device.
-    /// 
+    ///
     /// If the ack parameter is true, after reading
     /// from the downstream device, the teensy will
     /// send an acknowledgement bit.
-    /// 
+    ///
     /// In order to use this method successfully,
     /// you must first have invoked `i2c.begin_transmission()`
-    /// 
-    /// ```
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
     /// let mut wire = I2C::begin(19, 18);
-    /// wire.begin_transmission(0x50, true)
+    /// wire.begin_transmission(0x50, true);
     /// let str = &[
     ///     wire.read(true),
     ///     wire.read(true),
@@ -192,7 +198,7 @@ impl I2C {
         let mut byte: u8 = 0;
         let mut mask = 0x1 << 7;
 
-        for _ in 0 .. 8 {
+        for _ in 0..8 {
             if i2c_read_bit(&self) {
                 byte |= mask;
             }
@@ -210,24 +216,24 @@ impl I2C {
         return byte;
     }
 
-
     /// This method will read a series of bytes in rapid
     /// succession based from the currently open i2c device.
-    /// 
-    /// ```
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
     /// let mut wire = I2C::begin(19, 18);
     /// wire.begin_transmission(0xD, true);
     /// wire.write(&[0x3B]);
     /// wire.begin_transmission(0xD, false);
-    /// 
+    ///
     /// let bytes = wire.read_burst::<14>();
-    /// 
+    ///
     /// wire.end_transmission();
-    /// ``
+    /// ```
     pub fn read_burst<const T: usize>(&self) -> [u8; T] {
         let mut bytes = [0; T];
 
-        for idx in 0 .. T {
+        for idx in 0..T {
             bytes[idx] = self.read(true);
         }
         self.read(false);
@@ -237,9 +243,10 @@ impl I2C {
     /// This method will change the signal speed.
     /// By default, all signals are clocked at 100kHz
     /// but if you upgrade to fast mode, it'll be 400kHz.
-    /// 
-    /// ```
-    /// let mut wire = I2C::Begin(19, 18);
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
+    /// let mut wire = I2C::begin(19, 18);
     /// wire.set_speed(I2CSpeed::Fast400kHz);
     /// ```
     pub fn set_speed(&mut self, speed: I2CSpeed) {
@@ -251,15 +258,15 @@ impl I2C {
     /// will be output to the SerioDebug Serial channel
     /// with some loose information about missed ACK
     /// and NACK messages.
-    /// 
-    /// ```
-    /// let mut wire = I2C::Begin(19, 18);
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
+    /// let mut wire = I2C::begin(19, 18);
     /// wire.set_debug(true);
     /// ```
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
-
 }
 
 fn clock_high(i2c: &I2C) {
@@ -308,24 +315,22 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
     // **************
     // Pulse the clock
     // **************
-        clock_release(&i2c);
+    clock_release(&i2c);
     let timeout = nanos() + (i2c.speed as uNano * 4);
     let mut res = true;
 
     loop {
-
         // Check for stretch condition
         let now = nanos();
         let clock_line = pin_read(i2c.scl_pin);
         let data_line = pin_read(i2c.sda_pin);
 
-
         if clock_line == 0 {
             // We are stretching the signal
             assembly!("nop");
             continue;
-        } 
-        
+        }
+
         if data_line == 0 {
             res = false;
         }
@@ -351,7 +356,6 @@ fn i2c_write_bit(i2c: &I2C, high: bool) {
     } else {
         data_low(&i2c);
     }
-    
 
     // **************
     // Pulse the clock
@@ -372,4 +376,3 @@ fn i2c_end_condition(i2c: &I2C) {
     data_high(&i2c);
     wait_exact_ns(PAUSE);
 }
-
