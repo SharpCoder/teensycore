@@ -33,6 +33,17 @@ pub const GPT1: u32 = 0x401E_C000;
 pub const GPT2: u32 = 0x401F_0000;
 /** Periodic Timers */
 pub const PIT: u32 = 0x4008_4000;
+/** ADC */
+pub const ADC1_HC0: u32 = 0x400C_4000;
+pub const ADC1_HC1: u32 = 0x400C_4004;
+pub const ADC1_HC2: u32 = 0x400C_4008;
+pub const ADC1_HC3: u32 = 0x400C_400C;
+pub const ADC1_HC4: u32 = 0x400C_4010;
+pub const ADC1_HC5: u32 = 0x400C_4014;
+pub const ADC1_HC6: u32 = 0x400C_4018;
+pub const ADC1_HC7: u32 = 0x400C_401C;
+pub const ADC1_HS: u32 = 0x400C_4020;
+
 /** GPIO General Purpose Registers */
 pub const IOMUXC_GPR_GPR26: u32 = 0x400A_C068; // GPIO1 and GPIO6 mux settings
 pub const IOMUXC_GPR_GPR27: u32 = 0x400A_C06C; // GPIO2 and GPIO7 mux settings

@@ -82,6 +82,7 @@ macro_rules! main {
         use teensycore::clock::*;
         use teensycore::i2c::*;
         use teensycore::mem::*;
+        use teensycore::phys::analog::*;
         use teensycore::phys::irq::*;
         use teensycore::phys::pins::*;
         use teensycore::phys::*;

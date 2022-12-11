@@ -1,7 +1,8 @@
-//! Phys module handles kernel-level 
+//! Phys module handles kernel-level
 //! interfacing for physical, on-board peripherals.
 
 pub mod addrs;
+pub mod analog;
 pub mod dma;
 pub mod gpio;
 pub mod irq;
@@ -12,9 +13,9 @@ pub mod uart;
 pub mod xbar;
 
 pub enum Bitwise {
-    Or, // Or with the existing value
+    Or,  // Or with the existing value
     And, // And with the existing value
-    Eq, // Assign absolute vlaue
+    Eq,  // Assign absolute vlaue
 }
 
 pub enum Dir {
@@ -26,6 +27,7 @@ pub enum Dir {
 pub fn phys_clocks_en() {
     periodic_timers::pit_start_clock();
     uart::uart_start_clock();
+    analog::analog_start_clock();
     gpio::gpio_start_clock();
     xbar::xbar_start_clock();
     dma::dma_start_clock();
@@ -33,7 +35,7 @@ pub fn phys_clocks_en() {
 
 /// Takes a memory address and does an 8-bit write
 /// to the location.
-/// 
+///
 /// This method will be deprecated in the future,
 /// in preference of `assign_8`
 pub fn write_byte(address: u32, value: u8) {
@@ -68,7 +70,7 @@ pub fn assign(address: u32, value: u32) {
 
 /// Takes a memory address, an operation, and a value
 /// and performs the operations against the address.
-/// 
+///
 /// This is useful if you want to maintain existing data
 /// and logically AND or logically OR an additional byte.
 pub fn assign_bit(address: u32, op: Bitwise, value: u32) {
@@ -77,10 +79,10 @@ pub fn assign_bit(address: u32, op: Bitwise, value: u32) {
         match op {
             Bitwise::Or => {
                 assign(address, original_value | value);
-            },
+            }
             Bitwise::And => {
                 assign(address, original_value & value);
-            },
+            }
             Bitwise::Eq => {
                 assign(address, value);
             }
@@ -122,5 +124,3 @@ pub struct Reg {
     base: u32,
     mask: u32,
 }
-
-
