@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-use crate::*;
 use crate::debug::*;
-use crate::mem::{zero};
-use crate::{phys::*, assembly};
+use crate::mem::zero;
 use crate::phys::addrs::*;
 use crate::phys::irq::*;
 use crate::phys::read_word;
+use crate::*;
+use crate::{assembly, phys::*};
 
 type Fn = fn();
 
@@ -37,9 +37,9 @@ pub const URI: u32 = 1 << 6;
 pub const SRI: u32 = 1 << 7;
 pub const SLI: u32 = 1 << 8;
 pub const HCH: u32 = 1 << 12;
+pub const NAKE: u32 = 1 << 16;
 pub const TI0: u32 = 1 << 24;
 pub const TI1: u32 = 1 << 25;
-
 
 pub struct UsbEndpointConfig {
     pub stall: bool,
@@ -62,14 +62,13 @@ struct UsbEndpointQueueHead {
     reserved: u32,
     setup0: u32,
     setup1: u32,
-    first_transfer: u32,
-    last_transfer: u32,
+    first_transfer: UsbEndpointTransferDescriptor,
+    last_transfer: UsbEndpointTransferDescriptor,
     transfer_complete: Fn,
     unused: u32,
 }
 
 impl UsbEndpointQueueHead {
-    
     fn convert_to_dtd(addr: u32) -> *mut UsbEndpointTransferDescriptor {
         return addr as *mut UsbEndpointTransferDescriptor;
     }
@@ -81,8 +80,6 @@ impl UsbEndpointQueueHead {
     pub fn get_next_dtd(self) -> *mut UsbEndpointTransferDescriptor {
         return UsbEndpointQueueHead::convert_to_dtd(self.next);
     }
-
-
 }
 
 #[repr(C)]
@@ -112,10 +109,43 @@ impl UsbEndpointQueueHead {
     }
 }
 
-const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead { config: 0, current: 0, next: 0, status: 0, pointer0: 0, pointer1: 0, pointer2: 0, pointer3: 0, pointer4: 0, setup0: 0, setup1: 0, reserved: 0, first_transfer: 0, last_transfer: 0, transfer_complete: noop, unused: 0 };
+const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
+    config: 0,
+    current: 0,
+    next: 0,
+    status: 0,
+    pointer0: 0,
+    pointer1: 0,
+    pointer2: 0,
+    pointer3: 0,
+    pointer4: 0,
+    reserved: 0,
+    setup0: 0,
+    setup1: 0,
+    first_transfer: UsbEndpointTransferDescriptor {
+        next: 0,
+        status: 0,
+        pointer0: 0,
+        pointer1: 0,
+        pointer2: 0,
+        pointer3: 0,
+        pointer4: 0,
+    },
+    last_transfer: UsbEndpointTransferDescriptor {
+        next: 0,
+        status: 0,
+        pointer0: 0,
+        pointer1: 0,
+        pointer2: 0,
+        pointer3: 0,
+        pointer4: 0,
+    },
+    transfer_complete: noop,
+    unused: 0,
+};
 
 #[link_section = ".endpoint_queue"]
-static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 16] = [BLANK_QUEUE_HEAD; 16];
+static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 32] = [BLANK_QUEUE_HEAD; 32];
 static mut INITIALIZED: bool = false;
 
 fn usb_endpoint_location() -> u32 {
@@ -136,6 +166,7 @@ fn get_queue_head(queue: u32) -> *mut UsbEndpointQueueHead {
 }
 
 pub fn usb_start_clock() {
+    assign(0x400D_8000 + 0x120, 0xF << 8 | 6 << 4 | 1);
     // Ungate the USB clock
     assign(0x400F_C000 + 0x80, read_word(0x400F_C000 + 0x80) | 0x3);
     // Writing 1 to this bit (31) will soft-reset the USBPHYS device
@@ -153,6 +184,13 @@ pub fn usb_start_clock() {
     // Gate the USBPHYS n
     assign(0x400D_9038, 1 << 30);
     assign(0x400D_9000, 0);
+    // Set usb burstsize
+    assign(USB + 0x160, 0x0404);
+    // Set mode
+    usb_set_mode(UsbMode::DEVICE);
+    usb_initialize_endpoints();
+    usb_irq_enable(0x5FF & !0x80);
+    usb_cmd(1); // Run/Stop bit
 }
 
 pub fn usb_set_mode(mode: UsbMode) {
@@ -161,7 +199,8 @@ pub fn usb_set_mode(mode: UsbMode) {
             // Enter device mode and set the SLOM bit
             wait_ns(100);
             assign(USB + 0x1A8, 0x2 | (0x1 << 3));
-        },
+            wait_ns(100);
+        }
     }
 }
 /// Enable all usb interrupts
@@ -169,7 +208,7 @@ pub fn usb_irq_enable(value: u32) {
     irq_attach(Irq::Usb, handle_usb_irq);
     irq_enable(Irq::Usb);
 
-    assign(USB + 0x144, 0xFFFFFFFF);
+    wait_exact_ns(1);
     assign(USB + 0x148, value);
 }
 
@@ -181,6 +220,7 @@ pub fn usb_irq_clear(value: u32) {
 /// Disable all usb interrupts
 pub fn usb_irq_disable() {
     irq_disable(Irq::Usb);
+    wait_exact_ns(1);
     assign(USB + 0x148, 0x0);
 }
 
@@ -202,9 +242,10 @@ pub fn usb_initialize_endpoints() {
 
         // Set interrupt-on-setup
         (*endpoint0).config |= 1 << 15;
+        // (*endpoint1).config |= 1 << 15;
 
         // // Write a 1 to the nextdtd pointer
-        // ENDPOINT_HEADERS[0].next |= 1;
+        ENDPOINT_HEADERS[0].next |= 1;
         // ENDPOINT_HEADERS[1].next |= 1;
         assign(USB + 0x158, epaddr);
         // Set burst size
@@ -212,8 +253,9 @@ pub fn usb_initialize_endpoints() {
         // Set the OTG Termination bit
         assign(USB + 0x1A4, read_word(USB + 0x1A4) | (0x1 << 3));
 
-        debug_hex(epaddr, b"epaddr");
-
+        debug_str(b"[usb] booting...");
+        // debug_hex(epaddr, b"epaddr");
+        // debug_hex(read_word(read_word(USB + 0x158)), b"ENDPOINT_HEADER[0]");
     }
 }
 
@@ -233,7 +275,7 @@ pub fn usb_configure_endpoint(endpoint: u32, config: UsbEndpointConfig) {
     } // Otherwise, it has to be control - per the manual
 
     if config.reset {
-        value |=  0x1 << 6;
+        value |= 0x1 << 6;
     }
 
     if config.enabled {
@@ -245,7 +287,10 @@ pub fn usb_configure_endpoint(endpoint: u32, config: UsbEndpointConfig) {
 
     // assign(USB + 0x1C0 + (0x4 * endpoint), value);
     assign(USB + 0x1C0 + (0x4 * endpoint), value);
+}
 
+pub fn usb_cmd(val: u32) {
+    assign(USB + 0x140, val);
 }
 
 pub fn usb_restart() {
@@ -265,65 +310,96 @@ pub fn usb_stop() {
 fn handle_usb_irq() {
     irq_disable(Irq::Usb);
 
+    let show_messages = false;
     let irq_status = read_word(USB + 0x144);
+    // debug_hex(irq_status, b"[usb] irq");
     usb_irq_clear(irq_status);
-    debug_hex(irq_status, b"[usb] irq received");
-    
-    // debug_binary(irq_status, b"[usb] irq status");
+
     // Check the setup status
     let setup_status = read_word(USB + 0x1AC);
     if setup_status > 0 {
-        debug_str(b"[usb] setup_status detected");
+        if show_messages {
+            debug_str(b"[usb] setup_status detected");
+        }
     }
 
     let nak_status = read_word(USB + 0x178);
     if nak_status > 0 {
-        debug_str(b"[usb] nak requested");
-    }
-    
-    if (irq_status & HCH) > 0 {
-        debug_str(b"[usb] DCHalted!!!!!!!!!");
+        if show_messages {
+            debug_str(b"[usb] nak requested");
+        }
     }
 
-    let endpoint_primed = read_word(USB + 0x1B0);
-    debug_binary(endpoint_primed, b"[usb] endpoint primed");
-    debug_hex(read_word(USB + 0x1C0), b"[usb] endpoint0 control");
+    if (irq_status & HCH) > 0 {
+        if show_messages {
+            debug_str(b"[usb] DCHalted!!!!!!!!!");
+        }
+    }
+
+    // let endpoint_primed = read_word(USB + 0x1B0);
+    // debug_binary(endpoint_primed, b"[usb] endpoint primed");
+    // debug_hex(read_word(USB + 0x1C0), b"[usb] endpoint0 control");
 
     if (irq_status & PCI) > 0 {
-        debug_str(b" -> [usb] PCI flag detected");
-        
+        if show_messages {
+            debug_str(b" -> [usb] Port change flag detected");
+        }
+
         // Check which mode we are in
         let port_status = read_word(USB + 0x184);
-        if port_status & (0x1 << 9) > 0 { 
+        if show_messages && port_status & (0x1 << 9) > 0 {
             debug_str(b"[usb] highspeed mode");
-        } else {
+        } else if show_messages {
             debug_str(b"[usb] lowspeed");
         }
 
-        debug_hex(read_word(USB + 0x184), b"[usb] port status");
+        if show_messages {
+            debug_hex(read_word(USB + 0x184), b"[usb] port status");
+            debug_hex(read_word(USB + 0x1B8), b"[usb] endpoint status");
+        }
+
         // Mark it as primed
         // let original = read_word(USB + 0x1B0);
         // assign(USB + 0x1B0, original | 0x1 | (0x1 << 16));
     }
 
+    if (irq_status & FRI) > 0 {
+        if show_messages {
+            debug_str(b" -> [usb] frame rollover flag detected");
+        }
+    }
+
+    if (irq_status & NAKE) > 0 {
+        if show_messages {
+            debug_str(b" -> [usb] NAK flag detected");
+        }
+    }
+
     if (irq_status & SRI) > 0 {
-        debug_str(b" -> [usb] SRI (start of frame) flag detected");
+        if show_messages {
+            debug_str(b" -> [usb] Start of Frame flag detected");
+        }
+        assign(USB + 0x144, SRI);
     }
 
     if (irq_status & USBERRINT) > 0 {
         // Error
         debug_str(b" -> [usb] USBERRINT flag detected");
     }
-    
+
     if (irq_status & USBINT) > 0 {
-        // 
+        //
         debug_str(b" -> [usb] USBINT flag detected");
     }
 
     if (irq_status & SLI) > 0 {
-        debug_str(b" -> [usb] SLI flag detected");
+        if show_messages {
+            debug_str(b" -> [usb] DCD Suspend flag detected");
+        }
+
+        assign(USB + 0x184, 0x1 << 6);
     }
-    
+
     if (irq_status & TI0) > 0 {
         debug_str(b" -> [usb] TI0 flag detected");
     }
@@ -332,8 +408,7 @@ fn handle_usb_irq() {
         debug_str(b" -> [usb] TI1 flag detected");
     }
 
-    if (irq_status & URI) > 0{
-
+    if (irq_status & URI) > 0 {
         if unsafe { INITIALIZED } == false {
             debug_str(b" -> [usb] URI flag detected");
             // Clear ENDPTSETUPSTAT
@@ -363,28 +438,32 @@ fn handle_usb_irq() {
                 assign(USB + 0x1B0, 0x1 | (0x1 << 16));
             }
         }
-    } 
-
-    // Output the packet of data for endpoint0RX
-    unsafe {
-        let endpoint0 = get_queue_head(0);
-        debug_binary(read_word(USB + 0x1B8), b"Endpoint Status");
-        debug_hex((*endpoint0).config, b"config");
-        debug_hex((*endpoint0).current, b"current");
-        debug_hex((*endpoint0).next, b"next");
-        debug_hex((*endpoint0).status, b"status");
-        debug_hex((*endpoint0).pointer0, b"pointer0");
-        debug_hex((*endpoint0).pointer1, b"pointer1");
-        debug_hex((*endpoint0).pointer2, b"pointer2");
-        debug_hex((*endpoint0).pointer3, b"pointer3");
-        debug_hex((*endpoint0).pointer4, b"pointer4");
-        debug_hex((*endpoint0).setup0, b"setup0");
-        debug_hex((*endpoint0).setup1, b"setup1");
-        debug_hex((*endpoint0).first_transfer, b"first_transfer");
     }
 
-    debug_str(b"[usb] irq serviced");
+    // Output the packet of data for endpoint0RX
+    // unsafe {
+    //     let endpoint0 = get_queue_head(0);
+    //     debug_binary(read_word(USB + 0x1B8), b"Endpoint Status");
+    //     debug_hex((*endpoint0).config, b"config");
+    //     debug_hex((*endpoint0).current, b"current");
+    //     debug_hex((*endpoint0).next, b"next");
+    //     debug_hex((*endpoint0).status, b"status");
+    //     debug_hex((*endpoint0).pointer0, b"pointer0");
+    //     // debug_hex((*endpoint0).pointer1, b"pointer1");
+    //     // debug_hex((*endpoint0).pointer2, b"pointer2");
+    //     // debug_hex((*endpoint0).pointer3, b"pointer3");
+    //     // debug_hex((*endpoint0).pointer4, b"pointer4");
+    //     debug_hex((*endpoint0).setup0, b"setup0");
+    //     // debug_hex((*endpoint0).setup1, b"setup1");
+    //     // debug_hex((*endpoint0).first_transfer, b"first_transfer");
+    // }
+
+    if show_messages {
+        debug_str(b"[usb] irq serviced\n");
+    }
+
+    wait_exact_ns(1);
     irq_enable(Irq::Usb);
 }
 
-fn noop() { }
+fn noop() {}

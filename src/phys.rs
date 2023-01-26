@@ -10,6 +10,7 @@ pub mod periodic_timers;
 pub mod pins;
 pub mod timer;
 pub mod uart;
+pub mod usb;
 pub mod xbar;
 
 pub enum Bitwise {
@@ -31,6 +32,7 @@ pub fn phys_clocks_en() {
     gpio::gpio_start_clock();
     xbar::xbar_start_clock();
     dma::dma_start_clock();
+    usb::usb_start_clock();
 }
 
 /// Takes a memory address and does an 8-bit write
