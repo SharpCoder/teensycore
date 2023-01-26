@@ -1,15 +1,15 @@
 //! This module represents paged memory functionality alloc(), and free().
-//! 
+//!
 //! Used mostly by internal packages. Be aware that most things which get
 //! alloc()'d need to be free()'d so the memory can be relcaimed.
-//! 
+//!
 //! Use at your own risk. Most system datastructures that are included
 //! with teensycore properly handle memory as best they can, and offer
 //! a `drop()` method which should be invoked as soon as the variable
 //! is no longer required.
-use core::mem::{size_of};
+use core::mem::size_of;
 
-#[cfg(not(test))]
+#[cfg(not(feature = "testing"))]
 use crate::phys::addrs::OCRAM2;
 
 const MEMORY_MAXIMUM: u32 = 0x7_FFFF; // 512kb
@@ -58,7 +58,7 @@ impl Mempage {
 
             // Process the best candidate
             match best_ptr {
-                None => {},
+                None => {}
                 Some(node) => {
                     (*node).used = true;
                     return node as *mut u32;
@@ -93,7 +93,7 @@ impl Mempage {
         }
 
         let next_page = alloc_bytes(total_bytes) as *mut Mempage;
-        let item_ptr = ((next_page as u32) + page_bytes as u32) as *mut T; 
+        let item_ptr = ((next_page as u32) + page_bytes as u32) as *mut T;
 
         if is_overrun() {
             // Don't allocate a new page
@@ -107,11 +107,11 @@ impl Mempage {
                 used: true,
                 next: None,
             };
-            
+
             match MEMORY_PAGES {
                 None => {
                     MEMORY_PAGES = Some(next_page);
-                },
+                }
                 Some(head) => {
                     (*next_page).next = Some(head);
                     MEMORY_PAGES = Some(next_page);
@@ -120,22 +120,21 @@ impl Mempage {
         }
 
         return item_ptr;
-
     }
 }
 
 /// A debug method which returns true if we've begun
 /// recyclilng memory.
 pub fn is_overrun() -> bool {
-    return unsafe { IS_OVERRUN };  
+    return unsafe { IS_OVERRUN };
 }
 
 /// A method to zero out every piece of memory.
-/// If we encounter a bad sector, the device will throw an oob 
+/// If we encounter a bad sector, the device will throw an oob
 /// irq and enter error mode.
 #[cfg(not(feature = "testing"))]
 pub fn memtest() {
-    for addr in MEMORY_BEGIN_OFFSET .. MEMORY_MAXIMUM / 4 {
+    for addr in MEMORY_BEGIN_OFFSET..MEMORY_MAXIMUM / 4 {
         unsafe {
             let ptr = (OCRAM2 + addr * 4) as *mut u32;
             *ptr = 0;
@@ -147,7 +146,7 @@ pub fn memtest() {
 /// from a particular address.
 #[cfg(not(feature = "testing"))]
 pub fn zero(addr: u32, bytes: u32) {
-    for byte in 0 .. bytes {
+    for byte in 0..bytes {
         unsafe {
             let ptr = (addr + byte) as *mut u32;
             *ptr = 0;
@@ -156,7 +155,7 @@ pub fn zero(addr: u32, bytes: u32) {
 }
 
 /// Internal use only.
-/// 
+///
 /// This method will allocate bytes on the heap and
 /// return a raw pointer to the freshly claimed area
 /// of memory.
@@ -189,16 +188,14 @@ pub fn alloc<T>() -> *mut T {
 /// other alloc() requests to begin reusing that space.
 #[cfg(not(feature = "testing"))]
 pub fn free<T>(ptr: *mut T) {
-   let zero_ptr = ptr as u32;
+    let zero_ptr = ptr as u32;
     Mempage::free(zero_ptr);
 }
-
 
 #[cfg(feature = "testing")]
 pub fn alloc<T>() -> *mut T {
     return unsafe { std::alloc::alloc(std::alloc::Layout::new::<T>()) as *mut T };
 }
-
 
 #[cfg(feature = "testing")]
 pub fn free<T>(_ptr: *mut T) {
@@ -206,6 +203,4 @@ pub fn free<T>(_ptr: *mut T) {
 }
 
 #[cfg(feature = "testing")]
-pub fn zero(addr: u32, bytes: u32) {
-    
-}
+pub fn zero(addr: u32, bytes: u32) {}
