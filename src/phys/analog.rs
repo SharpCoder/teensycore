@@ -28,13 +28,29 @@ const ANALOG_PIN_BITS: [u32; 10] = [7, 8, 12, 11, 6, 5, 15, 0, 13, 14];
 pub fn analog_start_clock() {
     assign_bit(addrs::CCM_CCGR1, Bitwise::Or, 0x3 << 16);
 
+    // Calibrate
+    assign(0x400C_4048, 0x1 << 7);
+    loop {
+        if (read_word(0x400C_4048) & (0x1 << 7)) > 0 {
+            assembly!("nop");
+        } else {
+            break;
+        }
+    }
+
     // Default to 10-bits
-    analog_set_resolution(Resolution::Bits10);
+    analog_set_resolution(Resolution::Bits12);
+
+    // Configure
+    assign(0x400C_4048, (0x1 << 6) | (0x1 << 5));
 }
 
 /// Configure the ADC resolution. Set to either 8, 10, or 12 bits.
 pub fn analog_set_resolution(resolution: Resolution) {
-    assign(0x400C_4044, (0x1 << 9) | (resolution as u32) << 2);
+    assign(
+        0x400C_4044,
+        (0x3 << 14) | (0x1 << 16) | ((resolution as u32) << 2),
+    );
 }
 
 /// Read from the ADC
