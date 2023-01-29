@@ -116,6 +116,13 @@ pub const DMA: u32 = 0x400E_8000;
 pub const DMAMUX: u32 = 0x400E_C000;
 /** USB */
 pub const USB: u32 = 0x402E_0000;
+pub const USBPHY1_CTRL: u32 = 0x400D_9030;
+pub const USBPHY1_CTRL_SET: u32 = 0x400D_9034;
+pub const USBPHY1_CTRL_CLR: u32 = 0x400D_9038;
+pub const USBPHY1_PWD: u32 = 0x400D_9000;
+pub const PLL1_USB1_ADDR: u32 = 0x400D_8010;
+pub const PLL1_USB1_ADDR_SET: u32 = 0x400D_8014;
+pub const PLL1_USB1_ADDR_CLR: u32 = 0x400D_8018;
 /** XBAR */
 pub const IMXRT_XBARA1: u32 = 0x403B_C000;
 pub const IMXRT_XBARB2: u32 = 0x403C_0000;

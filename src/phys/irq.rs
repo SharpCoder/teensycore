@@ -1,30 +1,27 @@
 //! Irq module deals with interrupt handling.
-//! 
+//!
 //! In this module you will find functions that help
 //! manaage interrupts. Here is an example of enabling
 //! interrupts for the periodic timer:
-//! 
+//!
 //! ```no_run
 //! use teensycore::phys::irq::*;
-//! 
+//!
 //! irq_attach(Irq::PeriodicTimer, handle_timer_irq);
 //! irq_enable(Irq::PeriodicTimer);
-//! 
+//!
 //! fn handle_timer_irq() {
-//! 
+//!
 //! }
-//! ``` 
+//! ```
 #![allow(dead_code)]
 
 type Fn = fn();
+use crate::{
+    assembly,
+    phys::{addrs, assign, assign_8, read_word, set_bit},
+};
 use core::arch::asm;
-use crate::{phys::{ 
-    addrs,
-    assign,
-    assign_8,
-    read_word,
-    set_bit,
- }, assembly};
 
 // On the teensy, it's actually closer to 158 interrupts
 // This will be adjusted in the future.
@@ -54,9 +51,9 @@ pub struct IrqTable {
 pub static mut VECTORS: IrqTable = IrqTable {
     init_sp: 0x00, // This should probably not be 0.
     reset_handler: noop,
-    nmi_handler: fault_handler, 
+    nmi_handler: fault_handler,
     hardfault_handler: fault_handler,
-    mpufault_handler: fault_handler, 
+    mpufault_handler: fault_handler,
     busfault_handler: fault_handler,
     usagefault_handler: fault_handler,
     rsv0: 0x0,
@@ -67,7 +64,7 @@ pub static mut VECTORS: IrqTable = IrqTable {
     rsv4: 0x0,
     rsv5: 0x0,
     pendsv_handler: noop,
-    systick_handler: noop,    
+    systick_handler: noop,
     interrupts: [noop; MAX_SUPPORTED_IRQ],
 };
 
@@ -86,7 +83,8 @@ pub enum Irq {
     UsbPhy2 = 66, // UTMI1
     Gpt1 = 100,
     Gpt2 = 101,
-    Usb = 113, // USB OTG1 (there is another, currently unsupported)
+    Usb1 = 113, // USB OTG1
+    Usb2 = 112, // USB OTG2
     PeriodicTimer = 122,
 }
 
@@ -94,7 +92,7 @@ static mut IRQ_DISABLE_COUNT: usize = 0;
 
 /// System-level command to resume processing interrupts
 /// across the device.
-/// 
+///
 pub fn enable_interrupts() {
     unsafe {
         if IRQ_DISABLE_COUNT > 0 {
@@ -103,18 +101,18 @@ pub fn enable_interrupts() {
     }
 
     if unsafe { IRQ_DISABLE_COUNT } == 0 {
-        assembly!("CPSIE i");            
+        assembly!("CPSIE i");
     }
 }
 
 /// System-level command to stop processing interrupts
 /// across the device.
-/// 
+///
 pub fn disable_interrupts() {
     unsafe {
         IRQ_DISABLE_COUNT += 1;
     }
-    
+
     assembly!("CPSID i");
 }
 
@@ -131,7 +129,7 @@ fn irq_size() -> u32 {
 
 /// Get the current IVT wherever it may be stored
 fn get_ivt() -> *mut IrqTable {
-    return irq_addr() as *mut IrqTable
+    return irq_addr() as *mut IrqTable;
 }
 
 /// Enable a specific interrupt
@@ -157,7 +155,7 @@ pub fn irq_disable(irq_number: Irq) {
 }
 
 /// Set a particular Irq with a given priority.
-/// 
+///
 /// The lower the priority, the more important the interrupt will be.
 pub fn irq_priority(irq_number: Irq, priority: u8) {
     let num = irq_number as u32;
@@ -170,7 +168,6 @@ pub fn irq_clear_pending() {
     assign(addrs::NVIC_IRQ_CLEAR_PENDING_REG + 0x8, 0x0);
     assign(addrs::NVIC_IRQ_CLEAR_PENDING_REG + 0xC, 0x0);
 }
-
 
 /**
 This method exists to copy the "shadow NVIC" into

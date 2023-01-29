@@ -377,11 +377,9 @@ impl Uart {
             return;
         }
 
-        disable_interrupts();
         self.handle_receive_irq();
         self.handle_send_irq();
         uart_clear_irq(self.device);
-        enable_interrupts();
     }
 }
 
@@ -460,10 +458,28 @@ pub fn serial_baud(device: SerioDevice, rate: u32) {
 }
 
 pub fn serio_handle_irq() {
+    irq_disable(Irq::Uart1);
+    irq_disable(Irq::Uart2);
+    irq_disable(Irq::Uart3);
+    irq_disable(Irq::Uart4);
+    irq_disable(Irq::Uart5);
+    irq_disable(Irq::Uart6);
+    irq_disable(Irq::Uart7);
+    irq_disable(Irq::Uart8);
+
     get_uart_interface(SerioDevice::Uart1).handle_irq();
     get_uart_interface(SerioDevice::Uart2).handle_irq();
     get_uart_interface(SerioDevice::Uart3).handle_irq();
     get_uart_interface(SerioDevice::Uart4).handle_irq();
     get_uart_interface(SerioDevice::Uart5).handle_irq();
     get_uart_interface(SerioDevice::Uart6).handle_irq();
+
+    irq_enable(Irq::Uart1);
+    irq_enable(Irq::Uart2);
+    irq_enable(Irq::Uart3);
+    irq_enable(Irq::Uart4);
+    irq_enable(Irq::Uart5);
+    irq_enable(Irq::Uart6);
+    irq_enable(Irq::Uart7);
+    irq_enable(Irq::Uart8);
 }

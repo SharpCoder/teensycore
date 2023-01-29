@@ -50,11 +50,11 @@ SECTIONS
         . = ALIGN(2048);
         *(.endpoint_queue) 
         FILL(0x00)
-        . += 2048;
-        
+        . += 4096;
+        . = ALIGN(4096);
+
         *(.rodata*)
         *(.data*)
-        . = ALIGN(16);
     } > DTCM AT> FLASH
 
 

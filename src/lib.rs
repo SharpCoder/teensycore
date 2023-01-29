@@ -85,6 +85,7 @@ macro_rules! main {
         use teensycore::phys::analog::*;
         use teensycore::phys::irq::*;
         use teensycore::phys::pins::*;
+        use teensycore::phys::usb::*;
         use teensycore::phys::*;
         use teensycore::serio::*;
         use teensycore::system::map::*;
@@ -102,7 +103,6 @@ macro_rules! main {
                 phys_clocks_en();
 
                 // Ignite system clock for keeping track of millis()
-                // which is also used for the wait implementation.
                 clock_init();
 
                 // Make the LED pin an output
@@ -115,9 +115,7 @@ macro_rules! main {
                 // Enable interrupts across the system
                 enable_interrupts();
 
-                // Memory test zeros out the entire boundary of
-                // accessible ram
-                mem::memtest();
+                usb_initialize();
 
                 $app_code
             }
