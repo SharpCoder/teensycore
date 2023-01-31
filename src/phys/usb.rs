@@ -5,6 +5,7 @@ use crate::mem::zero;
 use crate::phys::addrs::*;
 use crate::phys::irq::*;
 use crate::phys::read_word;
+use crate::phys::usb_desc::*;
 use crate::*;
 use crate::{assembly, phys::*};
 
@@ -24,8 +25,6 @@ pub enum UsbEndpointType {
 
 pub enum UsbMode {
     DEVICE,
-    // Not supported at this time
-    // HOST,
 }
 
 pub const USBINT: u32 = 1;
@@ -46,6 +45,7 @@ pub const TI1: u32 = 1 << 25;
 pub const USBCMD: u32 = 0x402E_0140;
 pub const USBSTS: u32 = 0x402E_0144;
 pub const USBINTR: u32 = 0x402E_0148;
+pub const DEVICEADDR: u32 = 0x402E_0154;
 pub const ENDPTLISTADDR: u32 = 0x402E_0158;
 pub const USBMODE: u32 = 0x402E_01A8;
 pub const PORTSC1: u32 = 0x402E_0184;
@@ -58,6 +58,25 @@ pub const ENDPTCTRL0: u32 = 0x402E_01C0;
 
 /************************/
 
+#[derive(Clone, Copy)]
+pub struct SetupPacket {
+    pub bm_request_and_type: u16,
+    pub w_value: u16,
+    pub w_index: u16,
+    pub w_length: u16,
+}
+
+impl SetupPacket {
+    pub fn from_dwords(word1: u32, word2: u32) -> SetupPacket {
+        return SetupPacket {
+            bm_request_and_type: lsb(word1),
+            w_value: msb(word1),
+            w_index: lsb(word2),
+            w_length: msb(word2),
+        };
+    }
+}
+
 pub struct UsbEndpointConfig {
     pub stall: bool,
     pub enabled: bool,
@@ -66,40 +85,22 @@ pub struct UsbEndpointConfig {
 }
 
 #[repr(C, align(64))]
-struct UsbEndpointQueueHead {
-    config: u32,
-    current: u32,
-    next: u32,
-    status: u32,
-    pointer0: u32,
-    pointer1: u32,
-    pointer2: u32,
-    pointer3: u32,
-    pointer4: u32,
-    reserved: u32,
-    setup0: u32,
-    setup1: u32,
-    // first_transfer: u32,
-    // last_transfer: u32,
-    // transfer_complete: Fn,
-    // unused: u32,
+pub struct UsbEndpointQueueHead {
+    pub config: u32,
+    pub current: u32,
+    pub next: u32,
+    pub status: u32,
+    pub pointer0: u32,
+    pub pointer1: u32,
+    pub pointer2: u32,
+    pub pointer3: u32,
+    pub pointer4: u32,
+    pub reserved: u32,
+    pub setup0: u32,
+    pub setup1: u32,
 }
 
-// impl UsbEndpointQueueHead {
-//     fn convert_to_dtd(addr: u32) -> *mut UsbEndpointTransferDescriptor {
-//         return addr as *mut UsbEndpointTransferDescriptor;
-//     }
-
-//     pub fn get_dtd(self) -> *mut UsbEndpointTransferDescriptor {
-//         return UsbEndpointQueueHead::convert_to_dtd(self.current);
-//     }
-
-//     pub fn get_next_dtd(self) -> *mut UsbEndpointTransferDescriptor {
-//         return UsbEndpointQueueHead::convert_to_dtd(self.next);
-//     }
-// }
-
-#[repr(C)]
+#[repr(C, align(32))]
 struct UsbEndpointTransferDescriptor {
     next: u32,
     status: u32,
@@ -109,22 +110,6 @@ struct UsbEndpointTransferDescriptor {
     pointer3: u32,
     pointer4: u32,
     callback: Fn,
-}
-
-impl UsbEndpointQueueHead {
-    pub fn clear(&mut self) {
-        self.config = 0;
-        self.current = 0;
-        self.next = 0;
-        self.status = 0;
-        self.pointer0 = 0;
-        self.pointer1 = 0;
-        self.pointer2 = 0;
-        self.pointer3 = 0;
-        self.pointer4 = 0;
-        self.setup0 = 0;
-        self.setup1 = 0;
-    }
 }
 
 const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
@@ -140,17 +125,46 @@ const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     reserved: 0,
     setup0: 0,
     setup1: 0,
-    // first_transfer: 0,
-    // last_transfer: 0,
-    // transfer_complete: noop,
-    // unused: 0,
 };
 
 #[no_mangle]
 #[link_section = ".endpoint_queue"]
 static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 16] = [BLANK_QUEUE_HEAD; 16];
+#[no_mangle]
+#[link_section = ".dmabuffers"]
+static mut USB_DESCRIPTOR_BUFFER: [u8; 20480] = [0; 20480];
+#[no_mangle]
+static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
+    next: 0,
+    status: 0,
+    pointer0: 0,
+    pointer1: 0,
+    pointer2: 0,
+    pointer3: 0,
+    pointer4: 0,
+    callback: noop,
+};
+#[no_mangle]
+static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
+    next: 0,
+    status: 0,
+    pointer0: 0,
+    pointer1: 0,
+    pointer2: 0,
+    pointer3: 0,
+    pointer4: 0,
+    callback: noop,
+};
 static mut INITIALIZED: bool = false;
 static mut HIGHSPEED: bool = false;
+
+const fn msb(val: u32) -> u16 {
+    return (val >> 16) as u16;
+}
+
+const fn lsb(val: u32) -> u16 {
+    return (val & 0xFFFF) as u16;
+}
 
 fn usb_endpoint_location(queue: usize) -> u32 {
     unsafe {
@@ -225,10 +239,15 @@ pub fn usb_initialize() {
 
     usb_set_mode(UsbMode::DEVICE);
     usb_initialize_endpoints();
-    usb_irq_enable(0x143); // 0x143, 0x30105FF
+    usb_irq_enable(0x143 | (1 << 24) | (1 << 25)); // 0x143, 0x30105FF
+
     usb_cmd(1); // Run/Stop bit
 
     debug_str(b"[usb] booting...");
+
+    // Configure timer
+    assign(USB + 0x80, 0x0003E7); // 1ms
+    assign(USB + 0x84, (1 << 31) | (1 << 24) | 0x0003E7);
 }
 
 pub fn usb_set_mode(mode: UsbMode) {
@@ -248,7 +267,6 @@ pub fn usb_irq_enable(value: u32) {
 }
 
 pub fn usb_irq_clear(value: u32) {
-    wait_exact_ns(1);
     assign(USBSTS, value);
 }
 
@@ -309,19 +327,211 @@ pub fn usb_cmd(val: u32) {
     assign(USBCMD, val);
 }
 
-#[no_mangle]
-fn handle_usb_irq() {
-    let show_messages = true;
-    let irq_status = read_word(USBSTS);
-    usb_irq_clear(irq_status);
+fn endpoint0_setup(packet: SetupPacket) {
+    // debug_u64(packet.bm_request_type as u64, b"bm_request_type");
+    // debug_u64(packet.m_request as u64, b"m_request");
+    // debug_u64(packet.w_value as u64, b"w_value");
+    // debug_u64(packet.w_index as u64, b"w_index");
+    // debug_u64(packet.w_length as u64, b"w_length");
 
-    // debug_hex(usb_endpoint_location(), b"usb endpoint location");
+    match packet.bm_request_and_type {
+        0x681 | 0x680 => {
+            debug_str(b"GET_DESCRIPTOR");
+            for descriptor in DESCRIPTOR_LIST {
+                let dw_value = descriptor.w_value as u16;
+                let dw_index = descriptor.w_index as u16;
 
-    // Check the setup status
-    let nak_status = read_word(USB + 0x178);
-    if nak_status > 0 {
-        debug_str(b"[usb] nak requested");
+                if dw_value == packet.w_value && dw_index == packet.w_index {
+                    // Transmit the data
+                    match descriptor.payload {
+                        DescriptorPayload::Device(bytes) => {
+                            debug_str(b"tx device descriptor");
+                            endpoint0_transmit(&bytes, false);
+                        }
+                        DescriptorPayload::Qualifier(bytes) => {
+                            debug_str(b"tx qualifier descriptor");
+                            endpoint0_transmit(&bytes, false);
+                        }
+                        DescriptorPayload::Config(bytes) => {
+                            debug_str(b"tx config descriptor");
+                            endpoint0_transmit(&bytes, false);
+                            blink_hardware(100);
+                        }
+                        DescriptorPayload::SupportedLanguages(_language_codes) => {
+                            debug_str(b"tx first string");
+                            blink_hardware(100);
+                        }
+                        DescriptorPayload::String(_characters) => {
+                            debug_str(b"tx string");
+                            blink_hardware(100);
+                        }
+                    }
+
+                    return;
+                }
+            }
+
+            debug_str(b"didn't find descriptor");
+        }
+        0x500 => {
+            endpoint0_receive(0, 0, false);
+            assign(DEVICEADDR, ((packet.w_value as u32) << 25) | (1 << 24));
+            debug_u64(packet.w_value as u64, b"SET_ADDRESS");
+            return;
+        }
+        0x900 => {
+            debug_str(b"SET_CONFIGURATION");
+        }
+        0x880 => {
+            debug_str(b"GET_CONFIGURATION");
+        }
+        0x80 => {
+            debug_str(b"GET_STATUS (device)");
+        }
+        0x82 => {
+            debug_str(b"GET_STATUS (endpoint)");
+        }
+        0x302 => {
+            debug_str(b"SET_FEATURE");
+        }
+        0x102 => {
+            debug_str(b"CLEAR_FEATURE");
+        }
+        _ => {
+            debug_str(b"UNKNOWN");
+            debug_u64(packet.bm_request_and_type as u64, b"bm_request_and_type");
+            debug_u64(packet.w_value as u64, b"w_value");
+            debug_u64(packet.w_index as u64, b"w_index");
+            debug_u64(packet.w_length as u64, b"w_length");
+        }
     }
+
+    assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
+}
+
+fn endpoint0_transmit(bytes: &[u8], notify: bool) {
+    // Do the transmit
+    let len = bytes.len() as u32;
+    // Copy bytes
+    // Zero out
+    unsafe {
+        for i in 0..USB_DESCRIPTOR_BUFFER.len() {
+            USB_DESCRIPTOR_BUFFER[i] = 0;
+        }
+    }
+
+    for i in 0..bytes.len() {
+        unsafe {
+            USB_DESCRIPTOR_BUFFER[i] = bytes[i].clone();
+        }
+    }
+
+    if len > 0 {
+        unsafe {
+            ENDPOINT0_TRANSFER_DATA.next = 1;
+            ENDPOINT0_TRANSFER_DATA.status = (len << 16) | (1 << 15) | (1 << 7);
+
+            let addr = (&USB_DESCRIPTOR_BUFFER as *const u8) as u32;
+            ENDPOINT0_TRANSFER_DATA.pointer0 = addr;
+            ENDPOINT0_TRANSFER_DATA.pointer1 = addr + 4096;
+            ENDPOINT0_TRANSFER_DATA.pointer2 = addr + 8192;
+            ENDPOINT0_TRANSFER_DATA.pointer3 = addr + 12288;
+            ENDPOINT0_TRANSFER_DATA.pointer4 = addr + 16384;
+
+            ENDPOINT_HEADERS[1].next =
+                (&ENDPOINT0_TRANSFER_DATA as *const UsbEndpointTransferDescriptor) as u32;
+            ENDPOINT_HEADERS[1].status = 0;
+
+            if (ENDPOINT_HEADERS[1].next & 0b11111) > 0 {
+                debug_str(b"INVALID PTR");
+                loop {
+                    assembly!("nop");
+                }
+            } else {
+                debug_hex(ENDPOINT_HEADERS[1].next, b"ep1.next");
+            }
+        }
+        assign(ENDPTPRIME, read_word(ENDPTPRIME) | (1 << 16));
+
+        while read_word(ENDPTPRIME) > 0 {
+            assembly!("nop");
+        }
+    }
+
+    unsafe {
+        ENDPOINT0_TRANSFER_ACK.next = 1;
+        match notify {
+            true => ENDPOINT0_TRANSFER_ACK.status = (1 << 7) | (1 << 15),
+            false => ENDPOINT0_TRANSFER_ACK.status = 1 << 7,
+        }
+        ENDPOINT0_TRANSFER_ACK.pointer0 = 0;
+        ENDPOINT_HEADERS[0].next =
+            (&ENDPOINT0_TRANSFER_ACK as *const UsbEndpointTransferDescriptor) as u32;
+        ENDPOINT_HEADERS[0].status = 0;
+
+        if (ENDPOINT_HEADERS[0].next & 0b11111) > 0 {
+            debug_str(b"INVALID ACK PTR");
+            loop {
+                assembly!("nop");
+            }
+        }
+    }
+
+    assign(ENDPTCOMPLETE, (1 << 16) | 1);
+    assign(ENDPTPRIME, read_word(ENDPTPRIME) | 1);
+
+    while read_word(ENDPTPRIME) > 0 {
+        assembly!("nop");
+    }
+}
+
+fn endpoint0_receive(addr: u32, len: u32, notify: bool) {
+    if len > 0 {
+        unsafe {
+            ENDPOINT0_TRANSFER_DATA.next = 1;
+            ENDPOINT0_TRANSFER_DATA.status = (len << 16) | (1 << 15) | (1 << 7);
+            ENDPOINT0_TRANSFER_DATA.pointer0 = addr;
+            ENDPOINT0_TRANSFER_DATA.pointer1 = addr + 4096;
+            ENDPOINT0_TRANSFER_DATA.pointer2 = addr + 8192;
+            ENDPOINT0_TRANSFER_DATA.pointer3 = addr + 12288;
+            ENDPOINT0_TRANSFER_DATA.pointer4 = addr + 16384;
+
+            ENDPOINT_HEADERS[0].next =
+                (&ENDPOINT0_TRANSFER_DATA as *const UsbEndpointTransferDescriptor) as u32;
+            ENDPOINT_HEADERS[0].status = 0;
+        }
+        assign(ENDPTPRIME, read_word(ENDPTPRIME) | 1);
+
+        while read_word(ENDPTPRIME) > 0 {
+            assembly!("nop");
+        }
+    }
+
+    unsafe {
+        ENDPOINT0_TRANSFER_ACK.next = 1;
+        match notify {
+            true => ENDPOINT0_TRANSFER_ACK.status = (1 << 7) | (1 << 15),
+            false => ENDPOINT0_TRANSFER_ACK.status = 1 << 7,
+        }
+        ENDPOINT0_TRANSFER_ACK.pointer0 = 0;
+        ENDPOINT_HEADERS[1].next =
+            (&ENDPOINT0_TRANSFER_ACK as *const UsbEndpointTransferDescriptor) as u32;
+        ENDPOINT_HEADERS[1].status = 0;
+    }
+
+    assign(ENDPTCOMPLETE, (1 << 16) | 1);
+    assign(ENDPTPRIME, read_word(ENDPTPRIME) | 1);
+
+    while read_word(ENDPTPRIME) > 0 {
+        assembly!("nop");
+    }
+}
+
+fn handle_usb_irq() {
+    let show_messages = false;
+    let irq_status = read_word(USBSTS);
+    assembly!("nop");
+    usb_irq_clear(irq_status);
 
     if (irq_status & HCH) > 0 {
         debug_str(b"[usb] DCHalted!!!!!!!!!");
@@ -338,7 +548,6 @@ fn handle_usb_irq() {
             unsafe {
                 HIGHSPEED = true;
             }
-            debug_str(b"   highspeed");
         } else {
             unsafe {
                 HIGHSPEED = false;
@@ -347,18 +556,7 @@ fn handle_usb_irq() {
 
         if (port_status & 1) > 0 {
             // Attached
-            debug_str(b"attached");
-        }
-
-        // debug_hex(port_status, b"port status");
-        // if port_status & (0x1 << 7) > 0 {
-        //     assign(PORTSC1, read_word(PORTSC1) & (0x1 << 6));
-        // }
-    }
-
-    if (irq_status & FRI) > 0 {
-        if show_messages {
-            debug_str(b" -> [usb] frame rollover flag detected");
+            // debug_str(b"attached");
         }
     }
 
@@ -374,7 +572,6 @@ fn handle_usb_irq() {
         //     if show_messages {
         //         debug_str(b" -> [usb] Start of Frame flag detected");
         //     }
-        //     assign(USBSTS, SRI);
     }
 
     if (irq_status & USBERRINT) > 0 {
@@ -383,81 +580,83 @@ fn handle_usb_irq() {
 
     if (irq_status & USBINT) > 0 {
         debug_str(b" -> [usb] USBINT flag detected");
+        let mut setup_status = read_word(ENDPTSETUPSTAT);
 
-        loop {
-            let setup_status = read_word(USB + 0x1AC);
-            if setup_status > 0 {
-            } else {
-                break;
+        while setup_status > 0 {
+            // Clear the setup status
+            assign(ENDPTSETUPSTAT, setup_status);
+
+            // Duplicate setup buffer into local byte array
+            let mut setup_packet;
+
+            loop {
+                // Set tripwire
+                assign(USBCMD, read_word(USBCMD) | (1 << 13));
+
+                // Copy the setup queue
+                unsafe {
+                    setup_packet = SetupPacket::from_dwords(
+                        ENDPOINT_HEADERS[0].setup0,
+                        ENDPOINT_HEADERS[0].setup1,
+                    );
+                }
+
+                // Check for finish condition
+                if (read_word(USBCMD) & (1 << 13)) > 0 {
+                    break;
+                } else {
+                    assembly!("nop");
+                }
             }
-        }
 
-        if setup_status > 0 {
-            debug_str(b"[usb] setup_status detected");
+            // Write 0 to clear the tripwire
+            assign(USBCMD, read_word(USBCMD) & !(1 << 13));
 
-            unsafe {
-                debug_hex(ENDPOINT_HEADERS[0].config, b"config");
-                debug_hex(ENDPOINT_HEADERS[0].current, b"current");
-                debug_hex(ENDPOINT_HEADERS[0].next, b"next");
-                debug_hex(ENDPOINT_HEADERS[0].status, b"status");
-                debug_hex(ENDPOINT_HEADERS[0].pointer0, b"pointer0");
-                debug_hex(ENDPOINT_HEADERS[0].pointer1, b"pointer1");
-                debug_hex(ENDPOINT_HEADERS[0].pointer2, b"pointer2");
-                debug_hex(ENDPOINT_HEADERS[0].pointer3, b"pointer3");
-                debug_hex(ENDPOINT_HEADERS[0].pointer4, b"pointer4");
-                debug_hex(ENDPOINT_HEADERS[0].setup0, b"setup0");
-                debug_hex(ENDPOINT_HEADERS[0].setup1, b"setup1");
-            }
-        }
-    }
+            // Flush endpoint
+            assign(ENDPTFLUSH, (1 << 16) | 1);
 
-    if (irq_status & SLI) > 0 && (read_word(PORTSC1) & (0x1 << 7) > 0) {
-        if show_messages {
-            debug_str(b" -> [usb] Enter sleep mode");
-        }
-
-        // assign(PORTSC1, 0x1 << 6);
-    }
-
-    if (irq_status & TI0) > 0 {
-        debug_str(b" -> [usb] TI0 flag detected");
-    }
-
-    if (irq_status & TI1) > 0 {
-        debug_str(b" -> [usb] TI1 flag detected");
-    }
-
-    if (irq_status & URI) > 0 {
-        if unsafe { INITIALIZED } == false {
-            debug_str(b" -> [usb] URI flag detected");
-            assign(ENDPTSTAT, read_word(USB + 0x1B8));
-            assign(ENDPTCOMPLETE, read_word(USB + 0x1BC));
-
-            // Wait for endpoint priming to finish
-            while read_word(ENDPTPRIME) != 0 {
+            // Wait for the flush to finish
+            while (read_word(ENDPTFLUSH) & ((1 << 16) | 1)) > 0 {
                 assembly!("nop");
             }
 
-            // Flush all endpoints
-            assign(ENDPTFLUSH, 0xFFFFFFFF);
+            // Setup
+            endpoint0_setup(setup_packet);
 
-            // Read the reset bit and make sure it is still active
-            let port_status = read_word(PORTSC1);
-            if (port_status & (1 << 8)) == 0 {
-                debug_str(b"[usb] ERROR PORT STATUS");
-            } else {
-                // Still active
-            }
-
-            // Do any other work
-            // ...
-
-            // unsafe {
-            // INITIALIZED = true;
-            // }
-
-            assign(ENDPTPRIME, 0x2 | (0x2 << 16));
+            // Check for another packet
+            setup_status = read_word(ENDPTSETUPSTAT);
         }
+
+        let complete_status = read_word(ENDPTCOMPLETE);
+        if complete_status > 0 {
+            assign(ENDPTCOMPLETE, 0xFFFF_FFFF);
+        }
+    }
+
+    if (irq_status & SLI) > 0 {
+        debug_str(b" -> [usb] suspend");
+    }
+
+    if (irq_status & URI) > 0 {
+        debug_str(b" -> [usb] URI flag detected");
+        assign(ENDPTSTAT, read_word(ENDPTSTAT));
+        assign(ENDPTCOMPLETE, read_word(ENDPTCOMPLETE));
+
+        // Wait for endpoint priming to finish
+        while read_word(ENDPTPRIME) != 0 {
+            assembly!("nop");
+        }
+
+        // Flush all endpoints
+        assign(ENDPTFLUSH, 0xFFFF_FFFF);
+
+        // Read the reset bit and make sure it is still active
+        // let port_status = read_word(PORTSC1);
+        // if (port_status & (1 << 8)) == 0 {
+        //     debug_str(b"[usb] ERROR PORT STATUS");
+        // } else {
+        //     // Still active
+        // }
     }
 }
 
