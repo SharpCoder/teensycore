@@ -332,12 +332,6 @@ fn usb_prime_endpoint(index: u32, tx: bool) {
 #[no_mangle]
 #[inline]
 fn endpoint0_setup(packet: SetupPacket) {
-    // debug_u64(packet.bm_request_type as u64, b"bm_request_type");
-    // debug_u64(packet.m_request as u64, b"m_request");
-    // debug_u64(packet.w_value as u64, b"w_value");
-    // debug_u64(packet.w_index as u64, b"w_index");
-    // debug_u64(packet.w_length as u64, b"w_length");
-
     match packet.bm_request_and_type {
         0x681 | 0x680 => {
             debug_str(b"GET_DESCRIPTOR");
@@ -350,21 +344,43 @@ fn endpoint0_setup(packet: SetupPacket) {
                     match descriptor.payload {
                         DescriptorPayload::Device(bytes) => {
                             debug_str(b"tx device descriptor");
-                            endpoint0_transmit(&bytes, false);
+                            endpoint0_transmit(&bytes, bytes.len(), false);
                         }
                         DescriptorPayload::Qualifier(bytes) => {
                             debug_str(b"tx qualifier descriptor");
-                            endpoint0_transmit(&bytes, false);
+                            endpoint0_transmit(&bytes, bytes.len(), false);
                         }
                         DescriptorPayload::Config(bytes) => {
                             debug_str(b"tx config descriptor");
-                            endpoint0_transmit(&bytes, false);
+                            // Send the correct variant
+                            endpoint0_transmit(&bytes, bytes.len(), false);
                         }
-                        DescriptorPayload::SupportedLanguages(_language_codes) => {
+                        DescriptorPayload::SupportedLanguages(language_codes) => {
                             debug_str(b"tx first string");
+
+                            // Create some obscenely large buffer and
+                            // build from that.
+                            let mut bytes: [u8; 64] = [0; 64];
+                            bytes[0] = (language_codes.len() * 2 + 2) as u8;
+                            bytes[1] = 3;
+                            for idx in 0..language_codes.len() {
+                                bytes[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8;
+                                bytes[idx * 2 + 3] = (language_codes[idx] >> 8) as u8;
+                            }
+
+                            endpoint0_transmit(&bytes, language_codes.len() * 2 + 2, false);
                         }
-                        DescriptorPayload::String(_characters) => {
+                        DescriptorPayload::String(characters) => {
                             debug_str(b"tx string");
+                            let mut bytes: [u8; 64] = [0; 64];
+                            bytes[0] = (2 * characters.len() + 2) as u8;
+                            bytes[1] = 3;
+                            for idx in 0..characters.len() {
+                                bytes[idx * 2 + 2] = characters[idx];
+                                bytes[idx * 2 + 3] = 0x0;
+                            }
+
+                            endpoint0_transmit(&bytes, 2 * characters.len() + 2, false);
                         }
                     }
 
@@ -372,6 +388,10 @@ fn endpoint0_setup(packet: SetupPacket) {
                 }
             }
 
+            debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
+            debug_hex(packet.w_value as u32, b"w_value");
+            debug_hex(packet.w_index as u32, b"w_index");
+            debug_hex(packet.w_length as u32, b"w_length");
             debug_str(b"didn't find descriptor");
         }
         0x500 => {
@@ -410,12 +430,11 @@ fn endpoint0_setup(packet: SetupPacket) {
     assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
 }
 
-fn endpoint0_transmit(bytes: &[u8], notify: bool) {
+fn endpoint0_transmit(bytes: &[u8], byte_length: usize, notify: bool) {
     // Do the transmit
+    let len = byte_length as u32;
     let src_addr = bytes.as_ptr() as u32;
     let usb_descriptor_buffer_addr = unsafe { USB_DESCRIPTOR_BUFFER.as_ptr() } as u32;
-    let len = bytes.len() as u32;
-
     arm_dcache_delete(usb_descriptor_buffer_addr, len);
     mem::copy(src_addr, usb_descriptor_buffer_addr, len);
 
