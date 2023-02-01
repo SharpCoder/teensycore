@@ -208,6 +208,31 @@ pub fn isb() {
     assembly!("isb");
 }
 
+// Delete data from the cache, without touching memory
+//
+// Normally arm_dcache_delete() is used before receiving data via
+// DMA or from bus-master peripherals which write to memory.  You
+// want to delete anything the cache may have stored, so your next
+// read is certain to access the physical memory.
+#[no_mangle]
+pub fn arm_dcache_delete(addr: u32, size: u32) {
+    let mut location = addr & 0xFFFFFFE0;
+    let end_addr = addr + size;
+
+    dsb();
+    loop {
+        phys::assign(0xE000EF5C, location);
+        location += 32;
+
+        if location >= end_addr {
+            break;
+        }
+    }
+
+    dsb();
+    isb();
+}
+
 pub enum PanicType {
     Hardfault,
     Memfault,

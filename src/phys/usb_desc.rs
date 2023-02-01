@@ -39,11 +39,11 @@ pub const DESCRIPTOR_LIST: [Descriptor; CONFIG_DESC_SIZE] = [
         w_value: 0x100,
         w_index: 0x0,
         payload: DescriptorPayload::Device([
-            18, // bLength
-            1,  // bDescriptorType
-            0x0,
+            18,              // bLength
+            1,               // bDescriptorType
+            0x0,             // bcdUSB LSB
             0x2,             // bcdUSB MSB
-            2,               // bDeviceClass
+            0,               // bDeviceClass
             0,               // bDeviceSubClass
             0,               // bDeviceProtocol
             64,              // bMaxPacketSize0

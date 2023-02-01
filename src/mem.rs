@@ -154,6 +154,19 @@ pub fn zero(addr: u32, bytes: u32) {
     }
 }
 
+/// This method will copy a certain amount of bytes
+/// from src and into dest.
+#[cfg(not(feature = "testing"))]
+pub fn copy(src: u32, dest: u32, len: u32) {
+    for byte in 0..len {
+        unsafe {
+            let src_ptr = (src + byte) as *mut u8;
+            let dst_ptr = (dest + byte) as *mut u8;
+            *dst_ptr = *src_ptr;
+        }
+    }
+}
+
 /// Internal use only.
 ///
 /// This method will allocate bytes on the heap and
@@ -204,3 +217,6 @@ pub fn free<T>(_ptr: *mut T) {
 
 #[cfg(feature = "testing")]
 pub fn zero(addr: u32, bytes: u32) {}
+
+#[cfg(feature = "testing")]
+pub fn copy(src: u32, dest: u32, len: u32) {}
