@@ -1,31 +1,22 @@
 #![allow(dead_code)]
 
+mod descriptors;
+pub mod models;
+mod registers;
+
+use descriptors::*;
+use models::*;
+use registers::*;
+
 use crate::debug::*;
 use crate::mem::zero;
 use crate::phys::addrs::*;
 use crate::phys::irq::*;
 use crate::phys::read_word;
-use crate::phys::usb_desc::*;
+use crate::system::vector::Stack;
+use crate::system::vector::Vector;
 use crate::*;
 use crate::{assembly, phys::*};
-
-type Fn = fn();
-
-pub enum UsbEndpointDirection {
-    TX,
-    RX,
-}
-
-pub enum UsbEndpointType {
-    CONTROL,
-    ISOCHRONOUS,
-    BULK,
-    INTERRUPT,
-}
-
-pub enum UsbMode {
-    DEVICE,
-}
 
 pub const USBINT: u32 = 1;
 pub const USBERRINT: u32 = 2;
@@ -42,75 +33,7 @@ pub const TI1: u32 = 1 << 25;
 
 /** Registers */
 
-pub const USBCMD: u32 = 0x402E_0140;
-pub const USBSTS: u32 = 0x402E_0144;
-pub const USBINTR: u32 = 0x402E_0148;
-pub const DEVICEADDR: u32 = 0x402E_0154;
-pub const ENDPTLISTADDR: u32 = 0x402E_0158;
-pub const USBMODE: u32 = 0x402E_01A8;
-pub const PORTSC1: u32 = 0x402E_0184;
-pub const ENDPTSETUPSTAT: u32 = 0x402E_01AC;
-pub const ENDPTPRIME: u32 = 0x402E_01B0;
-pub const ENDPTFLUSH: u32 = 0x402E_01B4;
-pub const ENDPTSTAT: u32 = 0x402E_01B8;
-pub const ENDPTCOMPLETE: u32 = 0x402E_01BC;
-pub const ENDPTCTRL0: u32 = 0x402E_01C0;
-
 /************************/
-
-#[derive(Clone, Copy)]
-pub struct SetupPacket {
-    pub bm_request_and_type: u16,
-    pub w_value: u16,
-    pub w_index: u16,
-    pub w_length: u16,
-}
-
-impl SetupPacket {
-    pub fn from_dwords(word1: u32, word2: u32) -> SetupPacket {
-        return SetupPacket {
-            bm_request_and_type: lsb(word1),
-            w_value: msb(word1),
-            w_index: lsb(word2),
-            w_length: msb(word2),
-        };
-    }
-}
-
-pub struct UsbEndpointConfig {
-    pub stall: bool,
-    pub enabled: bool,
-    pub reset: bool,
-    pub endpoint_type: UsbEndpointType,
-}
-
-#[repr(C, align(64))]
-pub struct UsbEndpointQueueHead {
-    pub config: u32,
-    pub current: u32,
-    pub next: u32,
-    pub status: u32,
-    pub pointer0: u32,
-    pub pointer1: u32,
-    pub pointer2: u32,
-    pub pointer3: u32,
-    pub pointer4: u32,
-    pub reserved: u32,
-    pub setup0: u32,
-    pub setup1: u32,
-}
-
-#[repr(C, align(32))]
-struct UsbEndpointTransferDescriptor {
-    next: u32,
-    status: u32,
-    pointer0: u32,
-    pointer1: u32,
-    pointer2: u32,
-    pointer3: u32,
-    pointer4: u32,
-    callback: Fn,
-}
 
 const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     config: 0,
@@ -125,6 +48,7 @@ const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     reserved: 0,
     setup0: 0,
     setup1: 0,
+    callback: noop,
 };
 
 #[no_mangle]
@@ -155,21 +79,17 @@ static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTr
     pointer4: 0,
     callback: noop,
 };
-static mut INITIALIZED: bool = false;
+
+static mut CONFIGURATION_CALLBACKS: Vector<ConfigFn> = Vector::new();
+static mut CONFIGURATION: u16 = 0;
 static mut HIGHSPEED: bool = false;
 
-const fn msb(val: u32) -> u16 {
-    return (val >> 16) as u16;
-}
-
-const fn lsb(val: u32) -> u16 {
-    return (val & 0xFFFF) as u16;
-}
-
-fn usb_endpoint_location(queue: usize) -> u32 {
+/// This method will attach a callback to be invoked
+/// when a setup packet is received. See usb_serial.rs
+/// for examples.
+pub fn usb_attach_setup_callback(callback: ConfigFn) {
     unsafe {
-        let endpoint = &ENDPOINT_HEADERS[queue] as *const UsbEndpointQueueHead;
-        return endpoint as u32;
+        CONFIGURATION_CALLBACKS.push(callback);
     }
 }
 
@@ -238,7 +158,7 @@ pub fn usb_initialize() {
     // *********************************
 
     usb_set_mode(UsbMode::DEVICE);
-    usb_initialize_endpoints();
+    endpoint0_initialize();
     usb_irq_enable(0x143); // 0x143, 0x30105FF, | (1 << 24) | (1 << 25)
 
     usb_cmd(1); // Run/Stop bit
@@ -259,8 +179,7 @@ pub fn usb_set_mode(mode: UsbMode) {
     }
 }
 
-#[no_mangle]
-#[inline]
+/// Wait for a register to read all 0's across the borad
 fn usb_waitfor(addr: u32) {
     while read_word(addr) > 0 {
         assembly!("nop");
@@ -276,6 +195,7 @@ pub fn usb_irq_enable(value: u32) {
     irq_enable(Irq::Usb1);
 }
 
+/// Clear specific interrupts from the status field.
 pub fn usb_irq_clear(value: u32) {
     assign(USBSTS, value);
 }
@@ -286,10 +206,13 @@ pub fn usb_irq_disable() {
     assign(USBINTR, 0x0);
 }
 
-pub fn usb_initialize_endpoints() {
+/// Internal method to initialize the control endpoints
+fn endpoint0_initialize() {
     unsafe {
-        let epaddr = usb_endpoint_location(0);
-        zero(epaddr, 4096 / 8);
+        let epaddr = &ENDPOINT_HEADERS[0] as *const UsbEndpointQueueHead as u32;
+
+        // 4096 bytes per the linker file
+        zero(epaddr, 4096);
 
         // Priming the headers
         // First, set max_packet_size
@@ -300,8 +223,93 @@ pub fn usb_initialize_endpoints() {
     }
 }
 
+/// Assign a value to the command register.
 pub fn usb_cmd(val: u32) {
     assign(USBCMD, val);
+}
+
+/// Return true if we are in highspeed mode.
+pub fn usb_is_highspeed() -> bool {
+    return unsafe { HIGHSPEED };
+}
+
+/// Helper method to configure an endpoint queuehead.
+fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<Fn>) {
+    qh.config = config;
+    qh.next = 1;
+
+    if cb.is_some() {
+        qh.callback = cb.unwrap();
+    }
+}
+
+/// Use this method to fully configure an endpoint
+pub fn usb_setup_endpoint(
+    index: usize,
+    tx_config: Option<EndpointConfig>,
+    rx_config: Option<EndpointConfig>,
+) {
+    let tx_qh = unsafe { &mut ENDPOINT_HEADERS[index * 2 + 1] };
+    let rx_qh = unsafe { &mut ENDPOINT_HEADERS[index * 2] };
+    let ep_control_addr = USB + 0x1C0 + (index as u32) * 4;
+
+    let isochornous = 1;
+    let bulk = 2;
+    let interrupt = 3;
+    let tx_enable_bit = 1 << 23;
+    let rx_enable_bit = 1 << 7;
+
+    if tx_config.is_some() {
+        let config = tx_config.unwrap();
+        match config.endpoint_type {
+            EndpointType::ISOCHRONOUS => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (isochornous << 18) | tx_enable_bit,
+                );
+            }
+            EndpointType::BULK => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (bulk << 18) | tx_enable_bit,
+                );
+            }
+            EndpointType::INTERRUPT => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (interrupt << 18) | tx_enable_bit,
+                );
+            }
+        }
+
+        configure_ep(tx_qh, config.size << 16, config.callback);
+    }
+
+    if rx_config.is_some() {
+        let config = rx_config.unwrap();
+        match config.endpoint_type {
+            EndpointType::ISOCHRONOUS => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (isochornous << 2) | rx_enable_bit,
+                );
+            }
+            EndpointType::BULK => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (bulk << 2) | rx_enable_bit,
+                );
+            }
+            EndpointType::INTERRUPT => {
+                assign(
+                    ep_control_addr,
+                    read_word(ep_control_addr) | (interrupt << 2) | rx_enable_bit,
+                );
+            }
+        }
+
+        configure_ep(rx_qh, config.size << 16, config.callback);
+    }
 }
 
 fn usb_prime_endpoint(index: u32, tx: bool) {
@@ -332,6 +340,10 @@ fn usb_prime_endpoint(index: u32, tx: bool) {
 #[no_mangle]
 #[inline]
 fn endpoint0_setup(packet: SetupPacket) {
+    for callback in unsafe { CONFIGURATION_CALLBACKS.into_iter() } {
+        callback(packet);
+    }
+
     match packet.bm_request_and_type {
         0x681 | 0x680 => {
             debug_str(b"GET_DESCRIPTOR");
@@ -364,8 +376,9 @@ fn endpoint0_setup(packet: SetupPacket) {
                             bytes[0] = (language_codes.len() * 2 + 2) as u8;
                             bytes[1] = 3;
                             for idx in 0..language_codes.len() {
-                                bytes[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8;
+                                bytes[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8; // lsb
                                 bytes[idx * 2 + 3] = (language_codes[idx] >> 8) as u8;
+                                // msb
                             }
 
                             endpoint0_transmit(&bytes, language_codes.len() * 2 + 2, false);
@@ -376,8 +389,8 @@ fn endpoint0_setup(packet: SetupPacket) {
                             bytes[0] = (2 * characters.len() + 2) as u8;
                             bytes[1] = 3;
                             for idx in 0..characters.len() {
-                                bytes[idx * 2 + 2] = characters[idx];
-                                bytes[idx * 2 + 3] = 0x0;
+                                bytes[idx * 2 + 2] = characters[idx]; // lsb
+                                bytes[idx * 2 + 3] = 0x0; // msb
                             }
 
                             endpoint0_transmit(&bytes, 2 * characters.len() + 2, false);
@@ -395,27 +408,39 @@ fn endpoint0_setup(packet: SetupPacket) {
             debug_str(b"didn't find descriptor");
         }
         0x500 => {
+            // Set Address
             endpoint0_receive(0, 0, false);
             assign(DEVICEADDR, ((packet.w_value as u32) << 25) | (1 << 24));
             debug_u64(packet.w_value as u64, b"SET_ADDRESS");
             return;
         }
         0x900 => {
+            // Set configuration
             debug_str(b"SET_CONFIGURATION");
+            unsafe {
+                CONFIGURATION = packet.w_value;
+            }
+            endpoint0_receive(0, 0, false);
+            return;
         }
         0x880 => {
+            // Get configuration
             debug_str(b"GET_CONFIGURATION");
         }
         0x80 => {
+            // Get status (device)
             debug_str(b"GET_STATUS (device)");
         }
         0x82 => {
+            // Get status (endpoint)
             debug_str(b"GET_STATUS (endpoint)");
         }
         0x302 => {
+            // Set feature
             debug_str(b"SET_FEATURE");
         }
         0x102 => {
+            // Clear feature
             debug_str(b"CLEAR_FEATURE");
         }
         _ => {
@@ -458,14 +483,6 @@ fn endpoint0_transmit(bytes: &[u8], byte_length: usize, notify: bool) {
         }
 
         usb_prime_endpoint(0, true);
-
-        // Wait for endpoint complete
-        while (read_word(ENDPTCOMPLETE) & (1 << 16)) == 0 {
-            assembly!("nop");
-        }
-
-        // Endpoint is complete
-        assign(ENDPTCOMPLETE, 0xFFFF_FFFF);
     }
 
     unsafe {
@@ -485,12 +502,6 @@ fn endpoint0_transmit(bytes: &[u8], byte_length: usize, notify: bool) {
     }
 
     usb_prime_endpoint(0, false);
-    // Wait for endpoint complete
-    while (read_word(ENDPTCOMPLETE) & 1) == 0 {
-        assembly!("nop");
-    }
-
-    assign(ENDPTCOMPLETE, 0xFFFF_FFFF);
 }
 
 fn endpoint0_receive(addr: u32, len: u32, notify: bool) {

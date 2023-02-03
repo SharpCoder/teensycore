@@ -27,6 +27,7 @@ pub mod mem;
 pub mod phys;
 pub mod serio;
 pub mod system;
+pub mod usb_serial;
 
 use crate::clock::uNano;
 use core::arch::asm;
@@ -89,6 +90,7 @@ macro_rules! main {
         use teensycore::phys::*;
         use teensycore::serio::*;
         use teensycore::system::map::*;
+        use teensycore::usb_serial::*;
         use teensycore::*;
 
         pub static mut GATES: BTreeMap<u32, u32> = BTreeMap { root: None };
@@ -116,6 +118,7 @@ macro_rules! main {
                 enable_interrupts();
 
                 usb_initialize();
+                usb_serial_init();
 
                 $app_code
             }

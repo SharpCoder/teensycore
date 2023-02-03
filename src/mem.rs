@@ -148,7 +148,7 @@ pub fn memtest() {
 pub fn zero(addr: u32, bytes: u32) {
     for byte in 0..bytes {
         unsafe {
-            let ptr = (addr + byte) as *mut u32;
+            let ptr = (addr + byte) as *mut u8;
             *ptr = 0;
         }
     }

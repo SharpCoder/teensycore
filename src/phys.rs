@@ -11,7 +11,6 @@ pub mod pins;
 pub mod timer;
 pub mod uart;
 pub mod usb;
-mod usb_desc;
 pub mod xbar;
 
 pub enum Bitwise {

@@ -23,8 +23,12 @@ pub struct Descriptor {
 // Whenever you add one, sadly you have to increment this
 // manually
 const CONFIG_DESC_SIZE: usize = 8;
-pub const CONFIG_DESC_BYTES: usize =
-    18 + 10 + 9 + 2 + 2 + 2 + MANUFACTURER_SIZE * 2 + 2 + PRODUCT_SIZE * 2;
+pub const CONFIG_DESC_BYTES: usize = 18 + // Device
+    10 + // Qualifier 
+    9 + // Config
+    2 + (2 * 1) + // Supported Languages (1 supported language)
+    2 + MANUFACTURER_SIZE * 2 +  // Manufacturer String
+    2 + PRODUCT_SIZE * 2; // Product String
 const NUM_INTERFACE: u8 = 2;
 
 // No idea where this comes from but would
@@ -43,7 +47,7 @@ pub const DESCRIPTOR_LIST: [Descriptor; CONFIG_DESC_SIZE] = [
             1,               // bDescriptorType
             0x0,             // bcdUSB LSB
             0x2,             // bcdUSB MSB
-            0,               // bDeviceClass
+            2,               // bDeviceClass (2 = Communication)
             0,               // bDeviceSubClass
             0,               // bDeviceProtocol
             64,              // bMaxPacketSize0
