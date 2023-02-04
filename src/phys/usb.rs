@@ -49,6 +49,8 @@ const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     setup0: 0,
     setup1: 0,
     callback: noop,
+    first_transfer: 0,
+    last_transfer: 0,
 };
 
 #[no_mangle]
@@ -243,6 +245,35 @@ fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<Fn>) {
     }
 }
 
+fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
+    let mut transfer_addr = qh.first_transfer;
+    while transfer_addr > 0 {
+        // Get the transfer
+        let transfer = unsafe {
+            (transfer_addr as *const UsbEndpointTransferDescriptor)
+                .as_ref()
+                .unwrap()
+        };
+
+        // Check if it's still active.
+        if (transfer.status & (1 << 7)) > 0 {
+            qh.first_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+            break;
+        }
+
+        transfer.callback.call(());
+
+        // End of queue
+        if transfer.next == 1 {
+            qh.first_transfer = 0;
+            qh.last_transfer = 0;
+            break;
+        } else {
+            transfer_addr = transfer.next;
+        }
+    }
+}
+
 /// Use this method to fully configure an endpoint
 pub fn usb_setup_endpoint(
     index: usize,
@@ -312,6 +343,82 @@ pub fn usb_setup_endpoint(
     }
 }
 
+pub fn usb_prepare_transfer(
+    transfer_queue: &mut UsbEndpointTransferDescriptor,
+    buffer: *const u8,
+    len: u32,
+) {
+    let addr = buffer as u32;
+
+    transfer_queue.next = 1;
+    transfer_queue.status = (len << 16) | (1 << 15) | (1 << 7);
+    transfer_queue.pointer0 = addr;
+    transfer_queue.pointer1 = addr + 4096;
+    transfer_queue.pointer2 = addr + 4096 * 2;
+    transfer_queue.pointer3 = addr + 4096 * 3;
+    transfer_queue.pointer4 = addr + 4096 * 4;
+}
+
+pub fn usb_receive(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
+    schedule_transfer(endpoint as u32, false, transfer);
+}
+
+fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescriptor) {
+    irq_disable(Irq::Usb1);
+
+    let qh = match tx {
+        true => unsafe { &mut ENDPOINT_HEADERS[(ep as usize) * 2 + 1] },
+        false => unsafe { &mut ENDPOINT_HEADERS[(ep as usize) * 2] },
+    };
+
+    let mask = match tx {
+        true => 1 << (ep + 16),
+        false => 1 << ep,
+    };
+
+    loop {
+        // 0 is fake null
+        // 1 indicates an invalid queue
+        if qh.last_transfer > 1 {
+            let last = qh.get_last_transfer();
+            last.next = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+            if (read_word(ENDPTPRIME) & mask) > 0 {
+                break;
+            }
+
+            let mut status;
+            let mut cycles = 0;
+
+            loop {
+                assign(USBCMD, read_word(USBCMD) | (1 << 14));
+                status = read_word(ENDPTSTAT);
+                let adtdw = read_word(USBCMD) & (1 << 14);
+                cycles += 1;
+
+                if adtdw > 0 || cycles > 2400 {
+                    break;
+                } else {
+                    assembly!("nop");
+                }
+            }
+
+            if (status & mask) > 0 {
+                break;
+            }
+        }
+
+        qh.next = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+        qh.status = 0;
+
+        usb_prime_endpoint(ep, tx);
+        qh.set_first_transfer(transfer);
+        break;
+    }
+
+    qh.set_last_transfer(transfer);
+    irq_enable(Irq::Usb1);
+}
+
 fn usb_prime_endpoint(index: u32, tx: bool) {
     let mask = match tx {
         true => 1 << (16 + index),
@@ -346,7 +453,7 @@ fn endpoint0_setup(packet: SetupPacket) {
 
     match packet.bm_request_and_type {
         0x681 | 0x680 => {
-            debug_str(b"GET_DESCRIPTOR");
+            // GET_DESCRIPTOR
             for descriptor in DESCRIPTOR_LIST {
                 let dw_value = descriptor.w_value as u16;
                 let dw_index = descriptor.w_index as u16;
@@ -540,7 +647,6 @@ fn endpoint0_receive(addr: u32, len: u32, notify: bool) {
         ENDPOINT_HEADERS[1].status = 0;
     }
 
-    assign(ENDPTCOMPLETE, 0xFFFF_FFFF);
     usb_prime_endpoint(0, true);
 }
 
@@ -670,7 +776,19 @@ fn handle_usb_irq() {
 
         let complete_status = read_word(ENDPTCOMPLETE);
         if complete_status > 0 {
-            assign(ENDPTCOMPLETE, 0xFFFF_FFFF);
+            assign(ENDPTCOMPLETE, complete_status);
+
+            unsafe {
+                // Run the transmit callbacks
+                for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
+                    run_callbacks(&mut ENDPOINT_HEADERS[idx * 2 + 1]);
+                }
+
+                // Run the receive callbacks
+                for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
+                    run_callbacks(&mut ENDPOINT_HEADERS[idx * 2]);
+                }
+            }
         }
     }
     // debug_str(b"[usb] / irq serviced /");

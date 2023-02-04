@@ -1,3 +1,5 @@
+use super::noop;
+
 pub type Fn = fn();
 pub type ConfigFn = fn(packet: SetupPacket);
 
@@ -51,6 +53,36 @@ pub struct UsbEndpointQueueHead {
     pub setup0: u32,
     pub setup1: u32,
     pub callback: Fn,
+    pub first_transfer: u32,
+    pub last_transfer: u32,
+}
+
+impl UsbEndpointQueueHead {
+    pub fn set_first_transfer(&mut self, transfer: &mut UsbEndpointTransferDescriptor) {
+        self.first_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+    }
+
+    pub fn set_last_transfer(&mut self, transfer: &mut UsbEndpointTransferDescriptor) {
+        self.last_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+    }
+
+    pub fn get_first_transfer(&self) -> &mut UsbEndpointTransferDescriptor {
+        return unsafe {
+            (self.first_transfer as *const UsbEndpointTransferDescriptor)
+                .cast_mut()
+                .as_mut()
+                .unwrap()
+        };
+    }
+
+    pub fn get_last_transfer(&self) -> &mut UsbEndpointTransferDescriptor {
+        return unsafe {
+            (self.last_transfer as *const UsbEndpointTransferDescriptor)
+                .cast_mut()
+                .as_mut()
+                .unwrap()
+        };
+    }
 }
 
 #[repr(C, align(32))]
@@ -63,4 +95,19 @@ pub struct UsbEndpointTransferDescriptor {
     pub pointer3: u32,
     pub pointer4: u32,
     pub callback: Fn,
+}
+
+impl UsbEndpointTransferDescriptor {
+    pub const fn new() -> Self {
+        return UsbEndpointTransferDescriptor {
+            next: 0,
+            status: 0,
+            pointer0: 0,
+            pointer1: 0,
+            pointer2: 0,
+            pointer3: 0,
+            pointer4: 0,
+            callback: noop,
+        };
+    }
 }

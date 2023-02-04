@@ -1,12 +1,15 @@
 //! A basic linked-list implementation
 //! which supports push/pop/enqueue/dequeue
 //! as well as random reads and puts.
-//! 
-//! It is loosely modeled after the 
+//!
+//! It is loosely modeled after the
 //! JavaScript array.
 #![allow(dead_code)]
-use crate::{mem::{ alloc, free }, math::rand};
-use core::iter::{Iterator};
+use crate::{
+    math::rand,
+    mem::{alloc, free},
+};
+use core::iter::Iterator;
 
 /// This macro returns a vector of the items you pass to it.
 #[macro_export]
@@ -22,7 +25,6 @@ macro_rules! vector {
     };
 }
 
-
 /// This macro takes a static string and returns
 /// a vector containing the sequence of characters.
 #[macro_export]
@@ -32,12 +34,12 @@ macro_rules! vec_str {
     };
 }
 
-pub trait Stack <T> {
+pub trait Stack<T> {
     fn push(&mut self, item: T);
     fn pop(&mut self) -> Option<T>;
 }
 
-pub trait Queue <T> {
+pub trait Queue<T> {
     fn enqueue(&mut self, item: T);
     fn dequeue(&mut self) -> Option<T>;
 }
@@ -54,33 +56,33 @@ Vector is a heap-backed datastructure
 which allocates dynamic memory and implements Stack.
 */
 #[derive(Copy, Clone)]
-pub struct Node<T : Clone + Copy> {
+pub struct Node<T: Clone + Copy> {
     pub item: T,
     pub next: Option<*mut Node<T>>,
 }
 
-pub struct Vector<T : Clone + Copy> {
+pub struct Vector<T: Clone + Copy> {
     pub head: Option<*mut Node<T>>,
     pub size: usize,
 }
 
-pub struct NodeIter<T: Clone+Copy> {
+pub struct NodeIter<T: Clone + Copy> {
     current: Option<Node<T>>,
     index: usize,
     size: usize,
 }
 
-impl <T: Clone+Copy> Iterator for NodeIter<T> {
+impl<T: Clone + Copy> Iterator for NodeIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.current {
             None => {
                 return None;
-            },
+            }
             Some(element) => {
                 let result = element.item;
-                
+
                 // Check if we have next
                 if element.next.is_none() {
                     self.current = None;
@@ -101,12 +103,12 @@ impl <T: Clone+Copy> Iterator for NodeIter<T> {
     }
 }
 
-impl <T: Clone + Copy> Clone for Vector<T> {
+impl<T: Clone + Copy> Clone for Vector<T> {
     fn clone(&self) -> Self {
         if self.head.is_none() {
             return Vector::new();
         }
-        
+
         let mut result = Vector::new();
         let mut ptr = self.head.unwrap();
 
@@ -125,11 +127,9 @@ impl <T: Clone + Copy> Clone for Vector<T> {
     }
 }
 
-impl <T: Clone + Copy> Copy for Vector<T> {
-    
-}
+impl<T: Clone + Copy> Copy for Vector<T> {}
 
-impl <T: Clone + Copy> Array<T> for Vector<T> {
+impl<T: Clone + Copy> Array<T> for Vector<T> {
     fn size(&self) -> usize {
         return self.size;
     }
@@ -137,7 +137,7 @@ impl <T: Clone + Copy> Array<T> for Vector<T> {
     fn put(&mut self, index: usize, element: T) {
         let node = self.get_mut(index);
         match node {
-            None => {},
+            None => {}
             Some(el) => {
                 (*el) = element;
             }
@@ -150,7 +150,7 @@ impl <T: Clone + Copy> Array<T> for Vector<T> {
         } else {
             // Travel n times through the linked list
             let mut ptr = self.head.unwrap();
-            for _ in 0 .. index {
+            for _ in 0..index {
                 ptr = unsafe { ptr.as_mut().unwrap() }.next.unwrap();
             }
             return unsafe { Some((*ptr).item) };
@@ -163,7 +163,7 @@ impl <T: Clone + Copy> Array<T> for Vector<T> {
         } else {
             // Travel n times through the linked list
             let mut ptr = self.head.unwrap();
-            for _ in 0 .. index {
+            for _ in 0..index {
                 ptr = unsafe { ptr.as_mut().unwrap() }.next.unwrap();
             }
             return unsafe { Some(&mut (*ptr).item) };
@@ -171,7 +171,7 @@ impl <T: Clone + Copy> Array<T> for Vector<T> {
     }
 }
 
-impl <T: Clone + Copy> Queue<T> for Vector<T> {
+impl<T: Clone + Copy> Queue<T> for Vector<T> {
     fn enqueue(&mut self, item: T) {
         // Add it to the end of the stack
         let ptr = alloc();
@@ -186,27 +186,26 @@ impl <T: Clone + Copy> Queue<T> for Vector<T> {
             self.head = Some(ptr);
         } else {
             let mut tail_ptr = self.head.unwrap();
-    
+
             // Find the tail
             while unsafe { tail_ptr.as_mut().unwrap() }.next.is_some() {
                 tail_ptr = unsafe { (*tail_ptr).next.unwrap() };
             }
-    
+
             unsafe { (*tail_ptr).next = Some(ptr) };
         }
         self.size += 1;
-
     }
 
     fn dequeue(&mut self) -> Option<T> {
         match self.head {
             None => {
                 return None;
-            },
+            }
             Some(node) => {
                 // Copy the reference
                 let node_item = unsafe { node.as_mut().unwrap() };
-                
+
                 // Free the actual node.
                 free(node);
 
@@ -214,12 +213,12 @@ impl <T: Clone + Copy> Queue<T> for Vector<T> {
                 self.head = node_item.next;
                 self.size = self.size - 1;
                 return Some(result);
-            },
-        }; 
+            }
+        };
     }
 }
 
-impl <T: Clone + Copy> Stack<T> for Vector<T> {
+impl<T: Clone + Copy> Stack<T> for Vector<T> {
     fn push(&mut self, item: T) {
         self.enqueue(item);
     }
@@ -237,20 +236,19 @@ impl <T: Clone + Copy> Stack<T> for Vector<T> {
             // Free the head
             free(self.head.unwrap());
             self.head = None;
-
         } else {
             // Travel to the correct node
             let mut ptr = self.head.unwrap();
-            for _ in 0 .. (self.size() - 2) {
+            for _ in 0..(self.size() - 2) {
                 ptr = unsafe { (*ptr).next.unwrap() };
             }
-            
+
             node_item = unsafe { (*(*ptr).next.unwrap()).item };
             unsafe {
                 // Free the node
                 free((*ptr).next.unwrap());
-                // Update node parent to point at nothing 
-                (*ptr).next = None 
+                // Update node parent to point at nothing
+                (*ptr).next = None
             };
         }
 
@@ -258,9 +256,12 @@ impl <T: Clone + Copy> Stack<T> for Vector<T> {
         return Some(node_item);
     }
 }
-impl <T: Clone + Copy> Vector<T> {
-    pub fn new() -> Self {
-        return Vector { head: None, size: 0 };
+impl<T: Clone + Copy> Vector<T> {
+    pub const fn new() -> Self {
+        return Vector {
+            head: None,
+            size: 0,
+        };
     }
 
     pub fn into_iter(&self) -> NodeIter<T> {
@@ -293,7 +294,7 @@ impl <T: Clone + Copy> Vector<T> {
 
     pub fn join(&mut self, vec_to_join: &Vector<T>) -> &mut Self {
         let mut copy = vec_to_join.clone();
-        for _ in 0 .. vec_to_join.size() {
+        for _ in 0..vec_to_join.size() {
             self.enqueue(copy.dequeue().unwrap());
         }
         copy.clear();
@@ -306,16 +307,16 @@ impl <T: Clone + Copy> Vector<T> {
             return None;
         }
 
-        for idx in start .. (start + length) {
+        for idx in start..(start + length) {
             result.enqueue(self.get(idx).unwrap());
         }
 
         return Some(result);
     }
 
-    pub fn reverse(&self) -> Vector::<T> {
+    pub fn reverse(&self) -> Vector<T> {
         let mut result = Vector::new();
-        for idx in 0 .. self.size() {
+        for idx in 0..self.size() {
             result.push(self.get(self.size() - idx - 1).unwrap());
         }
         return result;
@@ -323,27 +324,27 @@ impl <T: Clone + Copy> Vector<T> {
 
     /// This method will take a vector of <T>
     /// and return a copy of it, shuffled.
-    /// 
+    ///
     /// This is supposed to use the fisher-yates algorithm.
-    /// 
+    ///
     /// ```
     /// use teensycore::system::vector::*;
     /// use teensycore::*;
-    /// 
+    ///
     /// let vec = vector!(1,2,3,4);
     /// let shuffled = vec.shuffle();
     /// ```
-    pub fn shuffle(&self) -> Vector::<T> {
+    pub fn shuffle(&self) -> Vector<T> {
         let mut result = self.reverse();
-        
+
         // Items of 0 or 1 size do not need shuffled.
         if result.size() < 2 {
             return result;
         }
 
-        for idx in 0 .. (self.size() - 2) {
+        for idx in 0..(self.size() - 2) {
             let random_idx = idx + (rand() % (self.size() - idx) as u64) as usize;
-            
+
             let rand_val = result.get(random_idx).unwrap();
             let orig_val = result.get(idx).unwrap();
 
@@ -368,14 +369,14 @@ impl <T: Clone + Copy> Vector<T> {
 }
 
 #[cfg(test)]
-mod test { 
+mod test {
     use crate::math::seed_rand;
 
     use super::*;
 
     #[derive(Copy, Clone)]
     pub struct ShadowVec {
-        pub items: Vector::<u8>,
+        pub items: Vector<u8>,
         pub time: usize,
     }
 
@@ -394,13 +395,12 @@ mod test {
         assert_eq!(reversed2.get(1), Some(2));
         assert_eq!(reversed2.get(2), Some(3));
         assert_eq!(reversed2.get(3), Some(4));
-
     }
 
     #[test]
     fn advanced_copy() {
         let shadow = ShadowVec {
-            items: Vector::from_slice(&[1,2,3,4,5]),
+            items: Vector::from_slice(&[1, 2, 3, 4, 5]),
             time: 1337,
         };
 
@@ -461,7 +461,7 @@ mod test {
         assert_eq!(cloned_list.pop(), Some(32));
         assert_eq!(cloned_list.pop(), None);
 
-        cloned_list.join(&Vector::from_slice(&[32,64]));
+        cloned_list.join(&Vector::from_slice(&[32, 64]));
         let mut list3 = cloned_list.clone();
         list3.join(&Vector::from_slice(&[128]));
         assert_eq!(list3.get(0), Some(32));
@@ -473,7 +473,7 @@ mod test {
         list.enqueue(32);
         list.enqueue(64);
         list.enqueue(128);
-        
+
         assert_eq!(list.dequeue(), Some(32));
         assert_eq!(list.dequeue(), Some(64));
         assert_eq!(list.dequeue(), Some(128));
@@ -482,9 +482,9 @@ mod test {
 
     #[test]
     fn test_vector_join() {
-        let mut list1 = Vector::from_slice(&[32,64,128]);
-        let list2 = Vector::from_slice(&[256,512]);
-        
+        let mut list1 = Vector::from_slice(&[32, 64, 128]);
+        let list2 = Vector::from_slice(&[256, 512]);
+
         list1.join(&list2);
 
         assert_eq!(list1.pop(), Some(512));
@@ -493,11 +493,11 @@ mod test {
 
     #[test]
     fn test_vector_insert() {
-        let mut vec = Vector::from_slice(&[1,2,3,4,5]);
+        let mut vec = Vector::from_slice(&[1, 2, 3, 4, 5]);
         vec.put(3, 100);
 
         let mut found = false;
-        for idx in 0 .. vec.size() {
+        for idx in 0..vec.size() {
             if vec.get(idx) == Some(100) {
                 found = true;
             }
@@ -507,7 +507,7 @@ mod test {
 
     #[test]
     fn test_iterator() {
-        let vec = vector!(1,2,3,4);
+        let vec = vector!(1, 2, 3, 4);
         let mut count = 0;
         for _ in vec.into_iter() {
             count += 1;
@@ -518,7 +518,7 @@ mod test {
 
     #[test]
     fn test_shuffle() {
-        let vec = vector!(1,2,3,4,5,6);
+        let vec = vector!(1, 2, 3, 4, 5, 6);
         seed_rand(1340);
 
         let next_vec = vec.shuffle();
