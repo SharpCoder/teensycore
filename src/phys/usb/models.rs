@@ -1,5 +1,3 @@
-use super::noop;
-
 pub type Fn = fn();
 pub type ConfigFn = fn(packet: SetupPacket);
 pub type TransferCallbackFn = fn(packet: &UsbEndpointTransferDescriptor);
@@ -16,7 +14,7 @@ pub enum EndpointType {
 
 pub struct EndpointConfig {
     pub endpoint_type: EndpointType,
-    pub size: u32,
+    pub size: u16,
     pub callback: Option<TransferCallbackFn>,
 }
 

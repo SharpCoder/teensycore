@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-mod descriptors;
+pub mod descriptors;
 pub mod models;
-mod registers;
+pub mod registers;
 
 use descriptors::*;
 use models::*;
@@ -16,19 +16,6 @@ use crate::phys::read_word;
 use crate::system::vector::*;
 use crate::*;
 use crate::{assembly, phys::*};
-
-pub const USBINT: u32 = 1;
-pub const USBERRINT: u32 = 2;
-pub const PCI: u32 = 1 << 2;
-pub const FRI: u32 = 1 << 3;
-pub const SEI: u32 = 1 << 4;
-pub const URI: u32 = 1 << 6;
-pub const SRI: u32 = 1 << 7;
-pub const SLI: u32 = 1 << 8;
-pub const HCH: u32 = 1 << 12;
-pub const NAKE: u32 = 1 << 16;
-pub const TI0: u32 = 1 << 24;
-pub const TI1: u32 = 1 << 25;
 
 /** Registers */
 
@@ -62,33 +49,15 @@ static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
 
 #[no_mangle]
 #[link_section = ".dmabuffers"]
-static mut RANDOM_BUFFER: [u8; 512] = [0; 512];
-
-#[no_mangle]
-#[link_section = ".dmabuffers"]
 static mut ENDPOINT0_BUFFER: [u8; 8] = [0; 8];
 
 #[no_mangle]
-static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
-    next: 0,
-    status: 0,
-    pointer0: 0,
-    pointer1: 0,
-    pointer2: 0,
-    pointer3: 0,
-    pointer4: 0,
-};
+static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor =
+    UsbEndpointTransferDescriptor::new();
 
 #[no_mangle]
-static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
-    next: 0,
-    status: 0,
-    pointer0: 0,
-    pointer1: 0,
-    pointer2: 0,
-    pointer3: 0,
-    pointer4: 0,
-};
+static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor =
+    UsbEndpointTransferDescriptor::new();
 
 static mut ENDPOINT0_NOTIFY_MASK: u32 = 0;
 static mut IRQ_CALLBACKS: Vector<Fn> = Vector::new();
@@ -158,6 +127,9 @@ pub fn usb_start_clock() {
 }
 
 pub fn usb_initialize() {
+    // Configure the descriptors
+    usb_initialize_descriptors();
+
     // Reset
     // *********************************
     assign(USBPHY1_CTRL_SET, 1 << 31);
@@ -194,7 +166,7 @@ pub fn usb_set_mode(mode: UsbMode) {
 }
 
 /// Wait for a register to read all 0's across the borad
-fn usb_waitfor(addr: u32) {
+fn waitfor(addr: u32) {
     while read_word(addr) > 0 {
         assembly!("nop");
     }
@@ -304,7 +276,7 @@ pub fn usb_setup_endpoint(
 
     if tx_config.is_some() {
         let config = tx_config.unwrap();
-        configure_ep(tx_qh, config.size << 16, config.callback);
+        configure_ep(tx_qh, (config.size as u32) << 16, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -329,7 +301,7 @@ pub fn usb_setup_endpoint(
 
     if rx_config.is_some() {
         let config = rx_config.unwrap();
-        configure_ep(rx_qh, config.size << 16, config.callback);
+        configure_ep(rx_qh, (config.size as u32) << 16, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -473,93 +445,18 @@ fn endpoint0_setup(packet: SetupPacket) {
     match packet.bm_request_and_type {
         0x681 | 0x680 => {
             // GET_DESCRIPTOR
-            for descriptor in DESCRIPTOR_LIST {
-                let dw_value = descriptor.w_value as u16;
-                let dw_index = descriptor.w_index as u16;
-
-                if dw_value == packet.w_value && dw_index == packet.w_index {
-                    // Transmit the data
-                    match descriptor.payload {
-                        DescriptorPayload::Device(bytes) => {
-                            debug_str(b"tx device descriptor");
-                            endpoint0_transmit(&bytes, bytes.len(), false);
-                        }
-                        DescriptorPayload::Qualifier(bytes) => {
-                            debug_str(b"tx qualifier descriptor");
-                            endpoint0_transmit(&bytes, bytes.len(), false);
-                        }
-                        DescriptorPayload::Config(bytes) => {
-                            debug_hex(packet.w_value as u32, b"tx config descriptor");
-
-                            // Amalgamate the config descriptor with the interface
-                            let offset = bytes.len();
-                            for i in 0..offset {
-                                unsafe { RANDOM_BUFFER[i] = bytes[i] };
-                            }
-
-                            let other = match packet.w_value {
-                                0x200 => HIGH_SPEED_INTERFACE_DESCRIPTOR,
-                                _ => LOW_SPEED_INTERFACE_DESCRIPTOR,
-                            };
-
-                            for i in 0..other.len() {
-                                unsafe { RANDOM_BUFFER[offset + i] = other[i] };
-                            }
-
-                            // Per USB spec, we need to truncate the length
-                            // even if we want to supply more data. Host will
-                            // make a follow-up request for the full length.
-                            let mut len = bytes.len() + other.len();
-                            if len > packet.w_length as usize {
-                                len = packet.w_length as usize;
-                            }
-
-                            // Send the correct variant
-                            endpoint0_transmit(unsafe { &RANDOM_BUFFER }, len, false);
-                        }
-                        DescriptorPayload::SupportedLanguages(language_codes) => {
-                            debug_str(b"tx language codes");
-
-                            // Create some obscenely large buffer and
-                            // build from that.
-                            unsafe {
-                                RANDOM_BUFFER[0] = (language_codes.len() * 2 + 2) as u8;
-                                RANDOM_BUFFER[1] = 3;
-                                for idx in 0..language_codes.len() {
-                                    // lsb
-                                    RANDOM_BUFFER[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8;
-
-                                    // msb
-                                    RANDOM_BUFFER[idx * 2 + 3] = (language_codes[idx] >> 8) as u8;
-                                }
-
-                                endpoint0_transmit(
-                                    &RANDOM_BUFFER,
-                                    language_codes.len() * 2 + 2,
-                                    false,
-                                );
-                            }
-                        }
-                        DescriptorPayload::String(characters) => {
-                            debug_str(b"tx string");
-
-                            unsafe {
-                                RANDOM_BUFFER[0] = (2 * characters.len() + 2) as u8;
-                                RANDOM_BUFFER[1] = 3;
-                                for idx in 0..characters.len() {
-                                    // lsb
-                                    RANDOM_BUFFER[idx * 2 + 2] = characters[idx];
-                                    // msb
-                                    RANDOM_BUFFER[idx * 2 + 3] = 0x0;
-                                }
-
-                                endpoint0_transmit(&RANDOM_BUFFER, 2 * characters.len() + 2, false);
-                            }
-                        }
+            let descriptors = usb_get_descriptors();
+            match descriptors.get_bytes(packet.w_value, packet.w_index) {
+                Some(bytes) => {
+                    let mut byte_length = bytes.size();
+                    if byte_length > packet.w_length as usize {
+                        byte_length = packet.w_length as usize;
                     }
 
+                    endpoint0_transmit(bytes, byte_length, false);
                     return;
                 }
+                None => {}
             }
 
             debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
@@ -639,13 +536,19 @@ fn endpoint0_setup(packet: SetupPacket) {
     assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
 }
 
-fn endpoint0_transmit(bytes: &[u8], byte_length: usize, notify: bool) {
+fn endpoint0_transmit(vec: Vector<u8>, byte_length: usize, notify: bool) {
     // Do the transmit
     let len = byte_length as u32;
-    let src_addr = bytes.as_ptr() as u32;
     let usb_descriptor_buffer_addr = unsafe { USB_DESCRIPTOR_BUFFER.as_ptr() } as u32;
     arm_dcache_delete(usb_descriptor_buffer_addr, len);
-    mem::copy(src_addr, usb_descriptor_buffer_addr, len);
+    let mut i = 0;
+    for byte in vec.into_iter() {
+        unsafe {
+            USB_DESCRIPTOR_BUFFER[i] = byte;
+        }
+
+        i += 1;
+    }
 
     if len > 0 {
         unsafe {
@@ -796,7 +699,7 @@ fn handle_usb_irq() {
         assign(ENDPTCOMPLETE, read_word(ENDPTCOMPLETE));
 
         // Wait for endpoint priming to finish
-        usb_waitfor(ENDPTPRIME);
+        waitfor(ENDPTPRIME);
 
         // Flush all endpoints
         assign(ENDPTFLUSH, 0xFFFF_FFFF);
@@ -845,7 +748,7 @@ fn handle_usb_irq() {
             assign(ENDPTFLUSH, (1 << 16) | 1);
 
             // Wait for the flush to finish
-            usb_waitfor(ENDPTFLUSH);
+            waitfor(ENDPTFLUSH);
 
             if (read_word(ENDPTSTAT) & ((1 << 16) | 1)) > 0 {
                 debug_str(b"Endpoint Flush FAILED");
