@@ -1,25 +1,18 @@
 use crate::{
     arm_dcache_delete,
-    debug::{blink_hardware, debug_str},
+    debug::{debug_hex, debug_str, debug_u64},
     phys::{
         addrs::USB,
         irq::{irq_disable, irq_enable},
+        read_8,
         usb::models::*,
     },
     phys::{assign, irq::Irq, usb::*},
+    serio::{serial_write, SerioDevice},
 };
 
-static mut RX_TRANSFER: [UsbEndpointTransferDescriptor; 8] = [
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-];
-static mut TX_TRANSFER: [UsbEndpointTransferDescriptor; 1] = [UsbEndpointTransferDescriptor::new()];
+static mut RX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
+static mut TX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
 
 #[link_section = ".dmabuffers"]
 static mut RX_BUFFER: [u8; 64] = [0; 64];
@@ -84,9 +77,7 @@ fn usb_serial_configure(packet: SetupPacket) {
                 }),
             );
 
-            for i in 0..8 {
-                rx_queue_transfer(i);
-            }
+            rx_queue_transfer(0);
         }
         _ => {
             // Do nothing
@@ -100,15 +91,19 @@ fn rx_queue_transfer(index: usize) {
     let rx_buffer_len = unsafe { RX_BUFFER.len() } as u32;
     arm_dcache_delete(unsafe { RX_BUFFER.as_ptr() } as u32, rx_buffer_len);
     usb_prepare_transfer(
-        unsafe { &mut RX_TRANSFER[index] },
+        unsafe { &mut RX_TRANSFER },
         unsafe { RX_BUFFER.as_ptr() },
         rx_buffer_len,
     );
-    usb_receive(RX_ENDPOINT, unsafe { &mut RX_TRANSFER[index] });
+    usb_receive(RX_ENDPOINT, unsafe { &mut RX_TRANSFER });
     irq_enable(Irq::Usb1);
 }
 
-fn rx_callback() {
+fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
     debug_str(b"receive callback triggered");
-    blink_hardware(100);
+    // blink_hardware(100);
+    let len = (unsafe { RX_BUFFER.len() } as u32) - (packet.status >> 16) & 0x7FFF;
+    debug_hex(packet.status, b"packet status");
+    // // Read the bytes
+    debug_str(unsafe { &RX_BUFFER[0..(len as usize)] });
 }

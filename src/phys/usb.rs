@@ -77,8 +77,8 @@ static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor = UsbEndpointT
     pointer2: 0,
     pointer3: 0,
     pointer4: 0,
-    callback: noop,
 };
+
 #[no_mangle]
 static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
     next: 0,
@@ -88,7 +88,6 @@ static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTr
     pointer2: 0,
     pointer3: 0,
     pointer4: 0,
-    callback: noop,
 };
 
 static mut ENDPOINT0_NOTIFY_MASK: u32 = 0;
@@ -249,7 +248,7 @@ pub fn usb_is_highspeed() -> bool {
 }
 
 /// Helper method to configure an endpoint queuehead.
-fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<Fn>) {
+fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<TransferCallbackFn>) {
     qh.config = config;
     qh.next = 1;
 
@@ -268,13 +267,18 @@ fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
                 .unwrap()
         };
 
-        // Check if it's still active.
+        // Wait some long time and then check if it's still active.
         if (transfer.status & (1 << 7)) > 0 {
+            debug_str(b"still active");
+
+            // let rcv_buf = unsafe { (transfer.pointer0 as *const u8).as_ref().unwrap() };
+            // debug_str(&[*rcv_buf]);
+
             qh.first_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
             break;
         }
 
-        transfer.callback.call(());
+        qh.callback.call((transfer,));
 
         // End of queue
         if transfer.next == 1 {
@@ -812,7 +816,7 @@ fn handle_usb_irq() {
     }
 
     if (irq_status & USBINT) > 0 {
-        // debug_str(b" -> [usb] USBINT flag detected");
+        debug_str(b" -> [usb] USBINT");
         let mut setup_status = read_word(ENDPTSETUPSTAT);
         while setup_status > 0 {
             // Clear the setup status
@@ -909,4 +913,4 @@ fn endpoint0_complete() {
     debug_u64(bitrate, b"usb serial bitrate");
 }
 
-fn noop() {}
+fn noop(_packet: &UsbEndpointTransferDescriptor) {}

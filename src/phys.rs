@@ -108,6 +108,14 @@ pub fn read_16(address: u32) -> u16 {
     }
 }
 
+/// Takes a memory address and performs a 2-byte read,
+/// resulting in a u16 of the current data.
+pub fn read_8(address: u32) -> u8 {
+    unsafe {
+        return *(address as *mut u8);
+    }
+}
+
 /// Takes a value and sets a particular bit to zero,
 /// returning the new value.
 pub fn clear_bit(number: u32, bit: u8) -> u32 {

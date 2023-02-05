@@ -2,6 +2,7 @@ use super::noop;
 
 pub type Fn = fn();
 pub type ConfigFn = fn(packet: SetupPacket);
+pub type TransferCallbackFn = fn(packet: &UsbEndpointTransferDescriptor);
 
 pub enum UsbMode {
     DEVICE,
@@ -16,7 +17,7 @@ pub enum EndpointType {
 pub struct EndpointConfig {
     pub endpoint_type: EndpointType,
     pub size: u32,
-    pub callback: Option<Fn>,
+    pub callback: Option<TransferCallbackFn>,
 }
 
 #[derive(Clone, Copy)]
@@ -52,7 +53,7 @@ pub struct UsbEndpointQueueHead {
     pub reserved: u32,
     pub setup0: u32,
     pub setup1: u32,
-    pub callback: Fn,
+    pub callback: TransferCallbackFn,
     pub first_transfer: u32,
     pub last_transfer: u32,
 }
@@ -94,7 +95,6 @@ pub struct UsbEndpointTransferDescriptor {
     pub pointer2: u32,
     pub pointer3: u32,
     pub pointer4: u32,
-    pub callback: Fn,
 }
 
 impl UsbEndpointTransferDescriptor {
@@ -107,7 +107,6 @@ impl UsbEndpointTransferDescriptor {
             pointer2: 0,
             pointer3: 0,
             pointer4: 0,
-            callback: noop,
         };
     }
 }
