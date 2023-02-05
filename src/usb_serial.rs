@@ -1,19 +1,39 @@
 use crate::{
     arm_dcache_delete,
-    debug::debug_str,
+    debug::{debug_hex, debug_str},
     phys::{
         addrs::USB,
         irq::{irq_disable, irq_enable},
         usb::models::*,
     },
     phys::{assign, irq::Irq, usb::descriptors::*, usb::*},
+    system::{buffer::*, vector::Queue},
 };
 
-static mut RX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
 static mut TX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
 
+// How many pages of data we support
+const RX_BUFFER_SIZE: usize = 512;
+const RX_COUNT: usize = 8;
+
+static mut BUFFER: Buffer<512, u8> = Buffer::new(0);
+static mut AVAILABLE: usize = 0;
+
 #[link_section = ".dmabuffers"]
-static mut RX_BUFFER: [u8; 512] = [0; 512];
+static mut RX_BUFFER: [u8; RX_BUFFER_SIZE * RX_COUNT] = [0; RX_BUFFER_SIZE * RX_COUNT];
+static mut RX_TRANSFER: [UsbEndpointTransferDescriptor; RX_COUNT] = [
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+    UsbEndpointTransferDescriptor::new(),
+];
+
+#[link_section = ".dmabuffers"]
+static mut TX_BUFFER: [u8; 512] = [0; 512];
 
 const CDC_STATUS_INTERFACE: u8 = 0;
 const CDC_DATA_INTERFACE: u8 = 1;
@@ -56,6 +76,7 @@ fn usb_serial_configure(packet: SetupPacket) {
                 Some(EndpointConfig {
                     endpoint_type: EndpointType::INTERRUPT,
                     size: CDC_ACM_SIZE,
+                    zlt: false,
                     callback: None,
                 }),
                 None,
@@ -67,6 +88,7 @@ fn usb_serial_configure(packet: SetupPacket) {
                 Some(EndpointConfig {
                     endpoint_type: EndpointType::BULK,
                     size: CDC_TX_SIZE_480,
+                    zlt: true,
                     callback: None,
                 }),
                 None,
@@ -79,11 +101,14 @@ fn usb_serial_configure(packet: SetupPacket) {
                 Some(EndpointConfig {
                     endpoint_type: EndpointType::BULK,
                     size: CDC_RX_SIZE_480,
+                    zlt: false,
                     callback: Some(rx_callback),
                 }),
             );
 
-            rx_queue_transfer();
+            for page in 0..RX_COUNT {
+                rx_queue_transfer(page);
+            }
         }
         _ => {
             // Do nothing
@@ -92,26 +117,67 @@ fn usb_serial_configure(packet: SetupPacket) {
     }
 }
 
-fn rx_queue_transfer() {
+fn rx_queue_transfer(page: usize) {
     irq_disable(Irq::Usb1);
-    let rx_buffer_len = unsafe { RX_BUFFER.len() } as u32;
-    arm_dcache_delete(unsafe { RX_BUFFER.as_ptr() } as u32, rx_buffer_len);
+    let rx_buffer_len = RX_BUFFER_SIZE as u32;
+    let base_address = unsafe { RX_BUFFER.as_ptr() } as u32;
+    let page_address = base_address + (RX_BUFFER_SIZE * page) as u32;
+
+    arm_dcache_delete(page_address, rx_buffer_len);
     usb_prepare_transfer(
-        unsafe { &mut RX_TRANSFER },
-        unsafe { RX_BUFFER.as_ptr() },
+        unsafe { &mut RX_TRANSFER[page] },
+        page_address,
         rx_buffer_len,
     );
-    usb_receive(CDC_RX_ENDPOINT as usize, unsafe { &mut RX_TRANSFER });
+    usb_receive(CDC_RX_ENDPOINT as usize, unsafe { &mut RX_TRANSFER[page] });
     irq_enable(Irq::Usb1);
 }
 
-fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
-    // blink_hardware(100);
-    let len = (unsafe { RX_BUFFER.len() } as u32) - (packet.status >> 16) & 0x7FFF;
+fn rx_callback(qh: &UsbEndpointQueueHead, packet: &UsbEndpointTransferDescriptor) {
+    let base_address = unsafe { RX_BUFFER.as_ptr() } as u32;
+    let i = (packet.pointer0 - base_address) / RX_BUFFER_SIZE as u32;
+    let len = (RX_BUFFER_SIZE as u32) - (packet.status >> 16) & 0x7FFF;
+    let start = (i as usize) * RX_BUFFER_SIZE;
+    let end = start + len as usize;
+
     // // Read the bytes
-    debug_str(unsafe { &RX_BUFFER[0..(len as usize)] });
-    // Queue a new receive packet.
-    rx_queue_transfer();
+    for index in start..end {
+        unsafe {
+            BUFFER.enqueue(RX_BUFFER[index]);
+        }
+    }
+
+    // If the queueheads have been reset, let's
+    // re-initialize it all.
+    //
+    // IDK if this is a good idea??
+    // What is the benefit of this vs. just having 1 queue head?
+    // I'm assuming multiple pages will give us some amount of
+    // concurrency resilience but not really sure.
+    if qh.first_transfer == qh.last_transfer && qh.first_transfer == 0 {
+        // Process
+        for i in 0..RX_COUNT {
+            rx_queue_transfer(i as usize);
+        }
+    }
+}
+
+pub fn usb_serial_available() -> usize {
+    return unsafe { BUFFER.size() };
+}
+
+pub fn usb_serial_read() -> Option<u8> {
+    return unsafe { BUFFER.dequeue() };
+}
+
+pub fn usb_serial_peek() -> Option<u8> {
+    unsafe {
+        if BUFFER.size() > 0 {
+            return Some(BUFFER.data[0]);
+        } else {
+            return None;
+        }
+    }
 }
 
 fn setup_cdc_descriptors() {

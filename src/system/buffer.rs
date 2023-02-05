@@ -1,7 +1,7 @@
 //! A datastructure which supports stack
 //! and queue operations, but is fixed
 //! length and does not invoke alloc().
-//! 
+//!
 //! This is a good choice for buffers and
 //! generally fixed/length queues/stacks.
 //! It is used internall for the `serio` system.
@@ -18,13 +18,13 @@ pub struct Buffer<const SIZE: usize, T> {
     pub tail: usize,
 }
 
-impl <const SIZE: usize, T : Copy> Stack<T> for Buffer<SIZE, T> {
+impl<const SIZE: usize, T: Copy> Stack<T> for Buffer<SIZE, T> {
     fn push(&mut self, item: T) {
         if self.tail == SIZE {
             // Discard the data. we are buffer oerflow.
             return;
         }
-        
+
         self.data[self.tail] = item;
         self.tail += 1;
     }
@@ -40,7 +40,7 @@ impl <const SIZE: usize, T : Copy> Stack<T> for Buffer<SIZE, T> {
     }
 }
 
-impl <const SIZE: usize, T : Copy> Queue<T> for Buffer<SIZE, T> {
+impl<const SIZE: usize, T: Copy> Queue<T> for Buffer<SIZE, T> {
     fn enqueue(&mut self, item: T) {
         if self.tail == SIZE - 1 {
             // Discard the data. we are buffer oerflow.
@@ -59,7 +59,7 @@ impl <const SIZE: usize, T : Copy> Queue<T> for Buffer<SIZE, T> {
         let result = self.data[0];
 
         // Shift everything to the left
-        for idx in 0 .. self.tail {
+        for idx in 0..self.tail {
             self.data[idx] = self.data[idx + 1].clone();
         }
 
@@ -94,7 +94,7 @@ impl Array<u8> for &[u8] {
     }
 }
 
-impl <const SIZE: usize, T : Copy> Array<T> for Buffer<SIZE, T> {
+impl<const SIZE: usize, T: Copy> Array<T> for Buffer<SIZE, T> {
     fn size(&self) -> usize {
         return self.tail;
     }
@@ -120,12 +120,12 @@ impl <const SIZE: usize, T : Copy> Array<T> for Buffer<SIZE, T> {
     }
 }
 
-impl <const SIZE: usize, T : Copy> Buffer<SIZE, T> {
-    pub fn new(default: T) -> Self {
+impl<const SIZE: usize, T: Copy> Buffer<SIZE, T> {
+    pub const fn new(default: T) -> Self {
         return Buffer {
             data: [default; SIZE],
             tail: 0,
-        }
+        };
     }
 
     pub fn size(&self) -> usize {
@@ -141,12 +141,8 @@ impl <const SIZE: usize, T : Copy> Buffer<SIZE, T> {
     }
 }
 
-
-
-
-
 #[cfg(test)]
-mod test { 
+mod test {
     use super::*;
 
     #[test]

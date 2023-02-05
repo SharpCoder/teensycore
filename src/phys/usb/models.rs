@@ -1,6 +1,6 @@
 pub type Fn = fn();
 pub type ConfigFn = fn(packet: SetupPacket);
-pub type TransferCallbackFn = fn(packet: &UsbEndpointTransferDescriptor);
+pub type TransferCallbackFn = fn(qh: &UsbEndpointQueueHead, packet: &UsbEndpointTransferDescriptor);
 
 pub enum UsbMode {
     DEVICE,
@@ -14,6 +14,7 @@ pub enum EndpointType {
 
 pub struct EndpointConfig {
     pub endpoint_type: EndpointType,
+    pub zlt: bool,
     pub size: u16,
     pub callback: Option<TransferCallbackFn>,
 }

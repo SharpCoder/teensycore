@@ -231,7 +231,7 @@ fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<TransferC
 
 fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
     let mut transfer_addr = qh.first_transfer;
-    while transfer_addr > 0 {
+    while transfer_addr > 1 {
         // Get the transfer
         let transfer = unsafe {
             (transfer_addr as *const UsbEndpointTransferDescriptor)
@@ -245,15 +245,21 @@ fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
             break;
         }
 
-        qh.callback.call((transfer,));
-
-        // End of queue
+        // Check for the end of queue.
         if transfer.next == 1 {
+            // Reset queueheads
             qh.first_transfer = 0;
             qh.last_transfer = 0;
-            break;
         } else {
             transfer_addr = transfer.next;
+        }
+
+        // Invoke the callback
+        qh.callback.call((qh, transfer));
+
+        // If we did reach the end of the queue, stop processing.
+        if transfer.next == 1 {
+            break;
         }
     }
 }
@@ -276,7 +282,13 @@ pub fn usb_setup_endpoint(
 
     if tx_config.is_some() {
         let config = tx_config.unwrap();
-        configure_ep(tx_qh, (config.size as u32) << 16, config.callback);
+
+        let mut config_bits = (config.size as u32) << 16;
+        if config.zlt {
+            config_bits |= 1 << 29;
+        }
+
+        configure_ep(tx_qh, config_bits, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -301,7 +313,13 @@ pub fn usb_setup_endpoint(
 
     if rx_config.is_some() {
         let config = rx_config.unwrap();
-        configure_ep(rx_qh, (config.size as u32) << 16, config.callback);
+
+        let mut config_bits = (config.size as u32) << 16;
+        if config.zlt {
+            config_bits |= 1 << 29;
+        }
+
+        configure_ep(rx_qh, config_bits, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -327,11 +345,9 @@ pub fn usb_setup_endpoint(
 
 pub fn usb_prepare_transfer(
     transfer_queue: &mut UsbEndpointTransferDescriptor,
-    buffer: *const u8,
+    addr: u32,
     len: u32,
 ) {
-    let addr = buffer as u32;
-
     transfer_queue.next = 1;
     transfer_queue.status = (len << 16) | (1 << 15) | (1 << 7);
     transfer_queue.pointer0 = addr;
@@ -811,4 +827,4 @@ fn endpoint0_complete() {
     debug_u64(bitrate, b"usb serial bitrate");
 }
 
-fn noop(_packet: &UsbEndpointTransferDescriptor) {}
+fn noop(_qh: &UsbEndpointQueueHead, _packet: &UsbEndpointTransferDescriptor) {}
