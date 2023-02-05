@@ -55,12 +55,19 @@ const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
 #[no_mangle]
 #[link_section = ".endpoint_queue"]
 static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 16] = [BLANK_QUEUE_HEAD; 16];
+
 #[no_mangle]
 #[link_section = ".dmabuffers"]
 static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
+
 #[no_mangle]
 #[link_section = ".dmabuffers"]
 static mut RANDOM_BUFFER: [u8; 512] = [0; 512];
+
+#[no_mangle]
+#[link_section = ".dmabuffers"]
+static mut ENDPOINT0_BUFFER: [u8; 8] = [0; 8];
+
 #[no_mangle]
 static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
     next: 0,
@@ -84,6 +91,7 @@ static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTr
     callback: noop,
 };
 
+static mut ENDPOINT0_NOTIFY_MASK: u32 = 0;
 static mut IRQ_CALLBACKS: Vector<Fn> = Vector::new();
 static mut CONFIGURATION_CALLBACKS: Vector<ConfigFn> = Vector::new();
 static mut CONFIGURATION: u16 = 0;
@@ -357,9 +365,9 @@ pub fn usb_prepare_transfer(
     transfer_queue.status = (len << 16) | (1 << 15) | (1 << 7);
     transfer_queue.pointer0 = addr;
     transfer_queue.pointer1 = addr + 4096;
-    transfer_queue.pointer2 = addr + 4096 * 2;
-    transfer_queue.pointer3 = addr + 4096 * 3;
-    transfer_queue.pointer4 = addr + 4096 * 4;
+    transfer_queue.pointer2 = addr + 8192;
+    transfer_queue.pointer3 = addr + 12288;
+    transfer_queue.pointer4 = addr + 16384;
 }
 
 pub fn usb_receive(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
@@ -412,7 +420,7 @@ fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescri
             // Write atdtw as zero
             assign(USBCMD, read_word(USBCMD) & !(1 << 14));
 
-            // If status bit is set, we're
+            // If status bit is set, we're done. Otherwise, fall into Case 1.
             if status > 0 {
                 break;
             }
@@ -598,9 +606,34 @@ fn endpoint0_setup(packet: SetupPacket) {
             // Clear feature
             debug_str(b"clear_feature");
         }
+        0x2021 => {
+            // Set Line Coding
+            if packet.w_length != 7 {
+                // Stall
+                debug_str(b"ep0 stall");
+                assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
+                return;
+            }
+
+            debug_str(b"set line coding");
+            endpoint0_receive(unsafe { ENDPOINT0_BUFFER.as_ptr() } as u32, 7, true);
+            return;
+        }
+        0x2221 => {
+            //Set control line state
+            debug_str(b"set control line state");
+            endpoint0_receive(0, 0, false);
+            return;
+        }
+        0x2321 => {
+            //Send Break
+            debug_str(b"send break");
+            endpoint0_receive(0, 0, false);
+            return;
+        }
         _ => {
             debug_str(b"unknown request");
-            debug_u64(packet.bm_request_and_type as u64, b"bm_request_and_type");
+            debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
         }
     }
 
@@ -692,6 +725,13 @@ fn endpoint0_receive(addr: u32, len: u32, notify: bool) {
         ENDPOINT_HEADERS[1].status = 0;
     }
 
+    if notify {
+        unsafe {
+            ENDPOINT0_NOTIFY_MASK = 1 << 16;
+        }
+    }
+
+    assign(ENDPTCOMPLETE, 1 | (1 << 16));
     usb_prime_endpoint(0, true);
 }
 
@@ -820,6 +860,14 @@ fn handle_usb_irq() {
         }
 
         let complete_status = read_word(ENDPTCOMPLETE);
+
+        unsafe {
+            if (complete_status & ENDPOINT0_NOTIFY_MASK) > 0 {
+                ENDPOINT0_NOTIFY_MASK = 0;
+                endpoint0_complete();
+            }
+        }
+
         if complete_status > 0 {
             assign(ENDPTCOMPLETE, complete_status);
 
@@ -844,6 +892,21 @@ fn handle_usb_irq() {
     }
 
     // debug_str(b"[usb] / irq serviced /");
+}
+
+fn endpoint0_complete() {
+    // TODO: This is not always what endpoint0_complete means
+    // choose correct action based on request.
+
+    // Read the buffer
+    let buffer = unsafe { ENDPOINT0_BUFFER.clone() };
+    let mut bitrate = 0;
+
+    for i in 0..4 {
+        bitrate |= (buffer[i] as u64) << (i * 8);
+    }
+
+    debug_u64(bitrate, b"usb serial bitrate");
 }
 
 fn noop() {}
