@@ -13,8 +13,7 @@ use crate::mem::zero;
 use crate::phys::addrs::*;
 use crate::phys::irq::*;
 use crate::phys::read_word;
-use crate::system::vector::Stack;
-use crate::system::vector::Vector;
+use crate::system::vector::*;
 use crate::*;
 use crate::{assembly, phys::*};
 
@@ -60,6 +59,9 @@ static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 16] = [BLANK_QUEUE_HEAD; 16]
 #[link_section = ".dmabuffers"]
 static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
 #[no_mangle]
+#[link_section = ".dmabuffers"]
+static mut RANDOM_BUFFER: [u8; 512] = [0; 512];
+#[no_mangle]
 static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor {
     next: 0,
     status: 0,
@@ -82,6 +84,7 @@ static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor = UsbEndpointTr
     callback: noop,
 };
 
+static mut IRQ_CALLBACKS: Vector<Fn> = Vector::new();
 static mut CONFIGURATION_CALLBACKS: Vector<ConfigFn> = Vector::new();
 static mut CONFIGURATION: u16 = 0;
 static mut HIGHSPEED: bool = false;
@@ -92,6 +95,12 @@ static mut HIGHSPEED: bool = false;
 pub fn usb_attach_setup_callback(callback: ConfigFn) {
     unsafe {
         CONFIGURATION_CALLBACKS.push(callback);
+    }
+}
+
+pub fn usb_attach_irq_handler(callback: Fn) {
+    unsafe {
+        IRQ_CALLBACKS.push(callback);
     }
 }
 
@@ -166,10 +175,6 @@ pub fn usb_initialize() {
     usb_cmd(1); // Run/Stop bit
 
     debug_str(b"[usb] booting...");
-
-    // Configure timer
-    // assign(USB + 0x80, 0x0003E7); // 1ms
-    // assign(USB + 0x84, (1 << 31) | (1 << 24) | 0x0003E7);
 }
 
 pub fn usb_set_mode(mode: UsbMode) {
@@ -292,6 +297,7 @@ pub fn usb_setup_endpoint(
 
     if tx_config.is_some() {
         let config = tx_config.unwrap();
+        configure_ep(tx_qh, config.size << 16, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -312,12 +318,11 @@ pub fn usb_setup_endpoint(
                 );
             }
         }
-
-        configure_ep(tx_qh, config.size << 16, config.callback);
     }
 
     if rx_config.is_some() {
         let config = rx_config.unwrap();
+        configure_ep(rx_qh, config.size << 16, config.callback);
         match config.endpoint_type {
             EndpointType::ISOCHRONOUS => {
                 assign(
@@ -338,8 +343,6 @@ pub fn usb_setup_endpoint(
                 );
             }
         }
-
-        configure_ep(rx_qh, config.size << 16, config.callback);
     }
 }
 
@@ -377,36 +380,45 @@ fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescri
     };
 
     loop {
-        // 0 is fake null
-        // 1 indicates an invalid queue
+        // Case 2. The queue is not empty.
         if qh.last_transfer > 1 {
             let last = qh.get_last_transfer();
+
+            // Add the new dtd to the end of the queue
             last.next = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+
+            // If the thing is still primed, hooray we're done.
             if (read_word(ENDPTPRIME) & mask) > 0 {
                 break;
             }
 
             let mut status;
-            let mut cycles = 0;
-
             loop {
+                // Set ATDTW bit to USBCMD
                 assign(USBCMD, read_word(USBCMD) | (1 << 14));
-                status = read_word(ENDPTSTAT);
-                let adtdw = read_word(USBCMD) & (1 << 14);
-                cycles += 1;
-
-                if adtdw > 0 || cycles > 2400 {
+                // Read status for current queue
+                status = read_word(ENDPTSTAT) & mask;
+                // Read atdtw bit
+                let atdtw = read_word(USBCMD) & (1 << 14);
+                // If it's zero, restart this process.
+                // If it's one, we can continue.
+                if atdtw > 0 {
                     break;
                 } else {
                     assembly!("nop");
                 }
             }
 
-            if (status & mask) > 0 {
+            // Write atdtw as zero
+            assign(USBCMD, read_word(USBCMD) & !(1 << 14));
+
+            // If status bit is set, we're
+            if status > 0 {
                 break;
             }
         }
 
+        // Case 1. The queue is empty
         qh.next = (transfer as *const UsbEndpointTransferDescriptor) as u32;
         qh.status = 0;
 
@@ -470,37 +482,72 @@ fn endpoint0_setup(packet: SetupPacket) {
                             endpoint0_transmit(&bytes, bytes.len(), false);
                         }
                         DescriptorPayload::Config(bytes) => {
-                            debug_str(b"tx config descriptor");
+                            debug_hex(packet.w_value as u32, b"tx config descriptor");
+
+                            // Amalgamate the config descriptor with the interface
+                            let offset = bytes.len();
+                            for i in 0..offset {
+                                unsafe { RANDOM_BUFFER[i] = bytes[i] };
+                            }
+
+                            let other = match packet.w_value {
+                                0x200 => HIGH_SPEED_INTERFACE_DESCRIPTOR,
+                                _ => LOW_SPEED_INTERFACE_DESCRIPTOR,
+                            };
+
+                            for i in 0..other.len() {
+                                unsafe { RANDOM_BUFFER[offset + i] = other[i] };
+                            }
+
+                            // Per USB spec, we need to truncate the length
+                            // even if we want to supply more data. Host will
+                            // make a follow-up request for the full length.
+                            let mut len = bytes.len() + other.len();
+                            if len > packet.w_length as usize {
+                                len = packet.w_length as usize;
+                            }
+
                             // Send the correct variant
-                            endpoint0_transmit(&bytes, bytes.len(), false);
+                            endpoint0_transmit(unsafe { &RANDOM_BUFFER }, len, false);
                         }
                         DescriptorPayload::SupportedLanguages(language_codes) => {
                             debug_str(b"tx first string");
 
                             // Create some obscenely large buffer and
                             // build from that.
-                            let mut bytes: [u8; 64] = [0; 64];
-                            bytes[0] = (language_codes.len() * 2 + 2) as u8;
-                            bytes[1] = 3;
-                            for idx in 0..language_codes.len() {
-                                bytes[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8; // lsb
-                                bytes[idx * 2 + 3] = (language_codes[idx] >> 8) as u8;
-                                // msb
-                            }
+                            unsafe {
+                                RANDOM_BUFFER[0] = (language_codes.len() * 2 + 2) as u8;
+                                RANDOM_BUFFER[1] = 3;
+                                for idx in 0..language_codes.len() {
+                                    // lsb
+                                    RANDOM_BUFFER[idx * 2 + 2] = (language_codes[idx] & 0xFF) as u8;
 
-                            endpoint0_transmit(&bytes, language_codes.len() * 2 + 2, false);
+                                    // msb
+                                    RANDOM_BUFFER[idx * 2 + 3] = (language_codes[idx] >> 8) as u8;
+                                }
+
+                                endpoint0_transmit(
+                                    &RANDOM_BUFFER,
+                                    language_codes.len() * 2 + 2,
+                                    false,
+                                );
+                            }
                         }
                         DescriptorPayload::String(characters) => {
                             debug_str(b"tx string");
-                            let mut bytes: [u8; 64] = [0; 64];
-                            bytes[0] = (2 * characters.len() + 2) as u8;
-                            bytes[1] = 3;
-                            for idx in 0..characters.len() {
-                                bytes[idx * 2 + 2] = characters[idx]; // lsb
-                                bytes[idx * 2 + 3] = 0x0; // msb
-                            }
 
-                            endpoint0_transmit(&bytes, 2 * characters.len() + 2, false);
+                            unsafe {
+                                RANDOM_BUFFER[0] = (2 * characters.len() + 2) as u8;
+                                RANDOM_BUFFER[1] = 3;
+                                for idx in 0..characters.len() {
+                                    // lsb
+                                    RANDOM_BUFFER[idx * 2 + 2] = characters[idx];
+                                    // msb
+                                    RANDOM_BUFFER[idx * 2 + 3] = 0x0;
+                                }
+
+                                endpoint0_transmit(&RANDOM_BUFFER, 2 * characters.len() + 2, false);
+                            }
                         }
                     }
 
@@ -518,44 +565,42 @@ fn endpoint0_setup(packet: SetupPacket) {
             // Set Address
             endpoint0_receive(0, 0, false);
             assign(DEVICEADDR, ((packet.w_value as u32) << 25) | (1 << 24));
-            debug_u64(packet.w_value as u64, b"SET_ADDRESS");
+            debug_u64(packet.w_value as u64, b"set_address");
             return;
         }
         0x900 => {
             // Set configuration
-            debug_str(b"SET_CONFIGURATION");
+            debug_str(b"set_configuration");
             unsafe {
                 CONFIGURATION = packet.w_value;
             }
+
             endpoint0_receive(0, 0, false);
             return;
         }
         0x880 => {
             // Get configuration
-            debug_str(b"GET_CONFIGURATION");
+            debug_str(b"get_configuration");
         }
         0x80 => {
             // Get status (device)
-            debug_str(b"GET_STATUS (device)");
+            debug_str(b"get_Status (device)");
         }
         0x82 => {
             // Get status (endpoint)
-            debug_str(b"GET_STATUS (endpoint)");
+            debug_str(b"get_status (endpoint)");
         }
         0x302 => {
             // Set feature
-            debug_str(b"SET_FEATURE");
+            debug_str(b"set_feature");
         }
         0x102 => {
             // Clear feature
-            debug_str(b"CLEAR_FEATURE");
+            debug_str(b"clear_feature");
         }
         _ => {
-            debug_str(b"UNKNOWN");
+            debug_str(b"unknown request");
             debug_u64(packet.bm_request_and_type as u64, b"bm_request_and_type");
-            debug_u64(packet.w_value as u64, b"w_value");
-            debug_u64(packet.w_index as u64, b"w_index");
-            debug_u64(packet.w_length as u64, b"w_length");
         }
     }
 
@@ -653,7 +698,7 @@ fn endpoint0_receive(addr: u32, len: u32, notify: bool) {
 fn handle_usb_irq() {
     let show_messages = false;
     let irq_status = read_word(USBSTS);
-    assembly!("nop");
+    assembly!("nop"); // Need this. no idea why.
     usb_irq_clear(irq_status);
 
     // debug_str(b"[usb] irq begin");
@@ -791,6 +836,13 @@ fn handle_usb_irq() {
             }
         }
     }
+
+    unsafe {
+        for other_irq_handler in IRQ_CALLBACKS.into_iter() {
+            other_irq_handler();
+        }
+    }
+
     // debug_str(b"[usb] / irq serviced /");
 }
 
