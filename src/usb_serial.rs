@@ -15,7 +15,7 @@ static mut RX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescr
 static mut TX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
 
 #[link_section = ".dmabuffers"]
-static mut RX_BUFFER: [u8; 64] = [0; 64];
+static mut RX_BUFFER: [u8; 512] = [0; 512];
 
 const ACM_ENDPOINT: usize = 2;
 const RX_ENDPOINT: usize = 3;
@@ -60,7 +60,7 @@ fn usb_serial_configure(packet: SetupPacket) {
                 TX_ENDPOINT,
                 Some(EndpointConfig {
                     endpoint_type: EndpointType::BULK,
-                    size: 64,
+                    size: 512,
                     callback: None,
                 }),
                 None,
@@ -72,7 +72,7 @@ fn usb_serial_configure(packet: SetupPacket) {
                 None,
                 Some(EndpointConfig {
                     endpoint_type: EndpointType::BULK,
-                    size: 64,
+                    size: 512,
                     callback: Some(rx_callback),
                 }),
             );
@@ -100,10 +100,10 @@ fn rx_queue_transfer(index: usize) {
 }
 
 fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
-    debug_str(b"receive callback triggered");
     // blink_hardware(100);
     let len = (unsafe { RX_BUFFER.len() } as u32) - (packet.status >> 16) & 0x7FFF;
-    debug_hex(packet.status, b"packet status");
     // // Read the bytes
     debug_str(unsafe { &RX_BUFFER[0..(len as usize)] });
+    // Queue a new receive packet.
+    rx_queue_transfer(0);
 }

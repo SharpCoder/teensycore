@@ -269,11 +269,6 @@ fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
 
         // Wait some long time and then check if it's still active.
         if (transfer.status & (1 << 7)) > 0 {
-            debug_str(b"still active");
-
-            // let rcv_buf = unsafe { (transfer.pointer0 as *const u8).as_ref().unwrap() };
-            // debug_str(&[*rcv_buf]);
-
             qh.first_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
             break;
         }
@@ -523,7 +518,7 @@ fn endpoint0_setup(packet: SetupPacket) {
                             endpoint0_transmit(unsafe { &RANDOM_BUFFER }, len, false);
                         }
                         DescriptorPayload::SupportedLanguages(language_codes) => {
-                            debug_str(b"tx first string");
+                            debug_str(b"tx language codes");
 
                             // Create some obscenely large buffer and
                             // build from that.
@@ -816,7 +811,7 @@ fn handle_usb_irq() {
     }
 
     if (irq_status & USBINT) > 0 {
-        debug_str(b" -> [usb] USBINT");
+        // debug_str(b" -> [usb] USBINT");
         let mut setup_status = read_word(ENDPTSETUPSTAT);
         while setup_status > 0 {
             // Clear the setup status

@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
-const MANUFACTURER_SIZE: usize = 8;
-const MANUFACTURER_NAME: &[u8; MANUFACTURER_SIZE] = b"Debuggle";
+const MANUFACTURER_NAME: &[u8] = b"Debuggle";
+const PRODUCT_NAME: &[u8] = b"Teensycore";
+const SERIAL_NUMBER: &[u8] = b"1337";
 
-const PRODUCT_SIZE: usize = 10;
-const PRODUCT_NAME: &[u8; PRODUCT_SIZE] = b"Teensycore";
 pub enum DescriptorPayload {
     Device([u8; 18]),
     Qualifier([u8; 10]),
@@ -28,17 +27,13 @@ const CDC_ACM_ENDPOINT: u8 = 2;
 const CDC_ACM_SIZE: u16 = 16;
 const CDC_RX_ENDPOINT: u8 = 3;
 const CDC_TX_ENDPOINT: u8 = 4;
-const CDC_RX_SIZE_480: u16 = 64;
-const CDC_TX_SIZE_480: u16 = 64;
+const CDC_RX_SIZE_480: u16 = 512;
+const CDC_TX_SIZE_480: u16 = 512;
 const CDC_RX_SIZE_12: u16 = 64;
 const CDC_TX_SIZE_12: u16 = 64;
 
-// No idea where this comes from but would
-// like to try changing it once this works.
-const PRODUCT_ID: u16 = 0x483;
-
-// No idea where this comes from
-const VENDOR_ID: u16 = 0x16C0;
+const PRODUCT_ID: u16 = 0xBADD;
+const VENDOR_ID: u16 = 0x1337;
 
 pub const DESCRIPTOR_LIST: [Descriptor; 8] = [
     Descriptor {
@@ -137,7 +132,7 @@ pub const DESCRIPTOR_LIST: [Descriptor; 8] = [
     Descriptor {
         w_value: 0x303,
         w_index: 0x409,
-        payload: DescriptorPayload::String(PRODUCT_NAME),
+        payload: DescriptorPayload::String(SERIAL_NUMBER),
     },
 ];
 
