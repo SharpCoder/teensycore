@@ -17,9 +17,7 @@ use crate::system::vector::*;
 use crate::*;
 use crate::{assembly, phys::*};
 
-/** Registers */
-
-/************************/
+type IrqFn = fn(status: u32);
 
 const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     config: 0,
@@ -60,7 +58,7 @@ static mut ENDPOINT0_TRANSFER_ACK: UsbEndpointTransferDescriptor =
     UsbEndpointTransferDescriptor::new();
 
 static mut ENDPOINT0_NOTIFY_MASK: u32 = 0;
-static mut IRQ_CALLBACKS: Vector<Fn> = Vector::new();
+static mut IRQ_CALLBACKS: Vector<IrqFn> = Vector::new();
 static mut CONFIGURATION_CALLBACKS: Vector<ConfigFn> = Vector::new();
 static mut CONFIGURATION: u16 = 0;
 static mut HIGHSPEED: bool = false;
@@ -74,9 +72,20 @@ pub fn usb_attach_setup_callback(callback: ConfigFn) {
     }
 }
 
-pub fn usb_attach_irq_handler(callback: Fn) {
+pub fn usb_attach_irq_handler(callback: IrqFn) {
     unsafe {
         IRQ_CALLBACKS.push(callback);
+    }
+}
+
+pub fn usb_queuehead(endpoint: usize, tx: bool) -> &'static mut UsbEndpointQueueHead {
+    unsafe {
+        let index = match tx {
+            true => endpoint * 2 + 1,
+            false => endpoint * 2,
+        };
+
+        return &mut ENDPOINT_HEADERS[index];
     }
 }
 
@@ -226,10 +235,12 @@ fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<TransferC
 
     if cb.is_some() {
         qh.callback = cb.unwrap();
+    } else {
+        qh.callback = noop;
     }
 }
 
-fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
+fn run_callbacks(qh_index: usize, qh: &mut UsbEndpointQueueHead) {
     let mut transfer_addr = qh.first_transfer;
     while transfer_addr > 1 {
         // Get the transfer
@@ -255,7 +266,7 @@ fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
         }
 
         // Invoke the callback
-        qh.callback.call((qh, transfer));
+        qh.callback.call((transfer,));
 
         // If we did reach the end of the queue, stop processing.
         if transfer.next == 1 {
@@ -270,8 +281,8 @@ pub fn usb_setup_endpoint(
     tx_config: Option<EndpointConfig>,
     rx_config: Option<EndpointConfig>,
 ) {
-    let tx_qh = unsafe { &mut ENDPOINT_HEADERS[index * 2 + 1] };
-    let rx_qh = unsafe { &mut ENDPOINT_HEADERS[index * 2] };
+    let tx_qh = usb_queuehead(index, true);
+    let rx_qh = usb_queuehead(index, false);
     let ep_control_addr = USB + 0x1C0 + (index as u32) * 4;
 
     let isochornous = 1;
@@ -347,28 +358,33 @@ pub fn usb_prepare_transfer(
     transfer_queue: &mut UsbEndpointTransferDescriptor,
     addr: u32,
     len: u32,
+    notify: bool,
 ) {
     transfer_queue.next = 1;
-    transfer_queue.status = (len << 16) | (1 << 15) | (1 << 7);
+    transfer_queue.status = (len << 16) | (1 << 7);
     transfer_queue.pointer0 = addr;
     transfer_queue.pointer1 = addr + 4096;
     transfer_queue.pointer2 = addr + 8192;
     transfer_queue.pointer3 = addr + 12288;
     transfer_queue.pointer4 = addr + 16384;
+
+    if notify {
+        transfer_queue.status |= 1 << 15;
+    }
 }
 
 pub fn usb_receive(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
     schedule_transfer(endpoint as u32, false, transfer);
 }
 
+pub fn usb_transmit(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
+    schedule_transfer(endpoint as u32, true, transfer);
+}
+
 fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescriptor) {
     irq_disable(Irq::Usb1);
 
-    let qh = match tx {
-        true => unsafe { &mut ENDPOINT_HEADERS[(ep as usize) * 2 + 1] },
-        false => unsafe { &mut ENDPOINT_HEADERS[(ep as usize) * 2] },
-    };
-
+    let qh = usb_queuehead(ep as usize, tx);
     let mask = match tx {
         true => 1 << (ep + 16),
         false => 1 << ep,
@@ -792,12 +808,12 @@ fn handle_usb_irq() {
             unsafe {
                 // Run the transmit callbacks
                 for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
-                    run_callbacks(&mut ENDPOINT_HEADERS[idx * 2 + 1]);
+                    run_callbacks(idx, usb_queuehead(idx, true));
                 }
 
                 // Run the receive callbacks
                 for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
-                    run_callbacks(&mut ENDPOINT_HEADERS[idx * 2]);
+                    run_callbacks(idx, usb_queuehead(idx, false));
                 }
             }
         }
@@ -805,7 +821,7 @@ fn handle_usb_irq() {
 
     unsafe {
         for other_irq_handler in IRQ_CALLBACKS.into_iter() {
-            other_irq_handler();
+            other_irq_handler(irq_status);
         }
     }
 
@@ -827,4 +843,4 @@ fn endpoint0_complete() {
     debug_u64(bitrate, b"usb serial bitrate");
 }
 
-fn noop(_qh: &UsbEndpointQueueHead, _packet: &UsbEndpointTransferDescriptor) {}
+fn noop(_packet: &UsbEndpointTransferDescriptor) {}
