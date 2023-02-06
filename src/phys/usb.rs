@@ -37,17 +37,21 @@ const BLANK_QUEUE_HEAD: UsbEndpointQueueHead = UsbEndpointQueueHead {
     last_transfer: 0,
 };
 
+const MAX_ENDPOINTS: usize = 8;
+
 #[no_mangle]
 #[link_section = ".endpoint_queue"]
-static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; 16] = [BLANK_QUEUE_HEAD; 16];
+static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; MAX_ENDPOINTS * 2] =
+    [BLANK_QUEUE_HEAD; MAX_ENDPOINTS * 2];
+
+#[link_section = ".dmabuffers"]
+static mut USB_DESCRIPTOR_BUFFER: BufferPage = BufferPage::new();
+// static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
 
 #[no_mangle]
 #[link_section = ".dmabuffers"]
-static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
-
-#[no_mangle]
-#[link_section = ".dmabuffers"]
-static mut ENDPOINT0_BUFFER: [u8; 8] = [0; 8];
+static mut ENDPOINT0_BUFFER: BufferPage = BufferPage::new();
+// static mut ENDPOINT0_BUFFER: [u8; 8] = [0; 8];
 
 #[no_mangle]
 static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor =
@@ -158,7 +162,7 @@ pub fn usb_initialize() {
 
     usb_set_mode(UsbMode::DEVICE);
     endpoint0_initialize();
-    usb_irq_enable(0x143); // 0x143, 0x30105FF, | (1 << 24) | (1 << 25)
+    usb_irq_enable(0x143);
 
     usb_cmd(1); // Run/Stop bit
 
@@ -242,6 +246,11 @@ fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<TransferC
 
 fn run_callbacks(qh_index: usize, qh: &mut UsbEndpointQueueHead) {
     let mut transfer_addr = qh.first_transfer;
+
+    if transfer_addr <= 1 {
+        return;
+    }
+
     while transfer_addr > 1 {
         // Get the transfer
         let transfer = unsafe {
@@ -320,6 +329,9 @@ pub fn usb_setup_endpoint(
                 );
             }
         }
+    } else {
+        // Unusued endpoints cannot remain CONTROL type
+        assign(ep_control_addr, read_word(ep_control_addr) | (bulk << 18));
     }
 
     if rx_config.is_some() {
@@ -351,6 +363,9 @@ pub fn usb_setup_endpoint(
                 );
             }
         }
+    } else {
+        // Unusued endpoints cannot remain CONTROL type
+        assign(ep_control_addr, read_word(ep_control_addr) | (bulk << 2));
     }
 }
 
@@ -360,16 +375,20 @@ pub fn usb_prepare_transfer(
     len: u32,
     notify: bool,
 ) {
-    transfer_queue.next = 1;
-    transfer_queue.status = (len << 16) | (1 << 7);
-    transfer_queue.pointer0 = addr;
-    transfer_queue.pointer1 = addr + 4096;
-    transfer_queue.pointer2 = addr + 8192;
-    transfer_queue.pointer3 = addr + 12288;
-    transfer_queue.pointer4 = addr + 16384;
+    if (transfer_queue.status & 0x80) == 0 {
+        transfer_queue.next = 1;
+        transfer_queue.status = (len << 16) | (1 << 7);
+        transfer_queue.pointer0 = addr;
+        transfer_queue.pointer1 = addr + 4096;
+        transfer_queue.pointer2 = addr + 8192;
+        transfer_queue.pointer3 = addr + 12288;
+        transfer_queue.pointer4 = addr + 16384;
 
-    if notify {
-        transfer_queue.status |= 1 << 15;
+        if notify {
+            transfer_queue.status |= 1 << 15;
+        }
+    } else {
+        debug_str(b"attempt to modify active dtd failed");
     }
 }
 
@@ -382,8 +401,6 @@ pub fn usb_transmit(endpoint: usize, transfer: &mut UsbEndpointTransferDescripto
 }
 
 fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescriptor) {
-    irq_disable(Irq::Usb1);
-
     let qh = usb_queuehead(ep as usize, tx);
     let mask = match tx {
         true => 1 << (ep + 16),
@@ -439,7 +456,6 @@ fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescri
     }
 
     qh.set_last_transfer(transfer);
-    irq_enable(Irq::Usb1);
 }
 
 fn usb_prime_endpoint(index: u32, tx: bool) {
@@ -467,8 +483,6 @@ fn usb_prime_endpoint(index: u32, tx: bool) {
     }
 }
 
-#[no_mangle]
-#[inline]
 fn endpoint0_setup(packet: SetupPacket) {
     for callback in unsafe { CONFIGURATION_CALLBACKS.into_iter() } {
         callback(packet);
@@ -576,7 +590,7 @@ fn endpoint0_transmit(vec: Vector<u8>, byte_length: usize, notify: bool) {
     let mut i = 0;
     for byte in vec.into_iter() {
         unsafe {
-            USB_DESCRIPTOR_BUFFER[i] = byte;
+            USB_DESCRIPTOR_BUFFER.bytes[i] = byte;
         }
 
         i += 1;
@@ -807,12 +821,12 @@ fn handle_usb_irq() {
 
             unsafe {
                 // Run the transmit callbacks
-                for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
+                for idx in 1..MAX_ENDPOINTS {
                     run_callbacks(idx, usb_queuehead(idx, true));
                 }
 
                 // Run the receive callbacks
-                for idx in 1..(ENDPOINT_HEADERS.len() / 2) {
+                for idx in 1..MAX_ENDPOINTS {
                     run_callbacks(idx, usb_queuehead(idx, false));
                 }
             }
@@ -833,7 +847,7 @@ fn endpoint0_complete() {
     // choose correct action based on request.
 
     // Read the buffer
-    let buffer = unsafe { ENDPOINT0_BUFFER.clone() };
+    let buffer = unsafe { ENDPOINT0_BUFFER.bytes };
     let mut bitrate = 0;
 
     for i in 0..4 {

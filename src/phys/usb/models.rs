@@ -12,6 +12,24 @@ pub enum EndpointType {
     INTERRUPT,
 }
 
+#[derive(Copy, Clone)]
+#[repr(C, align(4096))]
+pub struct BufferPage {
+    pub bytes: [u8; 4096 * 5],
+}
+
+impl BufferPage {
+    pub const fn new() -> Self {
+        return BufferPage {
+            bytes: [0; 4096 * 5],
+        };
+    }
+
+    pub fn as_ptr(&self) -> *const BufferPage {
+        return unsafe { self as *const BufferPage };
+    }
+}
+
 pub struct EndpointConfig {
     pub endpoint_type: EndpointType,
     pub zlt: bool,
@@ -85,7 +103,8 @@ impl UsbEndpointQueueHead {
     }
 }
 
-#[repr(C, align(32))]
+#[repr(C, align(256))]
+#[derive(Copy, Clone)]
 pub struct UsbEndpointTransferDescriptor {
     pub next: u32,
     pub status: u32,

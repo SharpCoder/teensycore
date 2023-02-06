@@ -1,43 +1,53 @@
 use crate::{
     arm_dcache_delete,
     debug::{debug_hex, debug_str},
+    mem,
     phys::{
         addrs::USB,
         irq::{irq_disable, irq_enable},
         usb::models::*,
         usb::registers::*,
     },
-    phys::{assign, irq::Irq, read_word, usb::descriptors::*, usb::*},
-    system::{buffer::*, vector::Queue},
+    phys::{assign, irq::Irq, pins::pin_out, read_word, usb::descriptors::*, usb::*},
+    serio::{serial_write, SerioDevice},
+    system::{
+        buffer::*,
+        vector::{Array, Queue, Stack, Vector},
+    },
     wait_exact_ns,
 };
 
 // How many pages of data we support
 const RX_BUFFER_SIZE: usize = 512;
-const RX_COUNT: usize = 8;
+const RX_COUNT: usize = 4;
+const TX_COUNT: usize = 4;
 
 static mut BUFFER: Buffer<512, u8> = Buffer::new(0);
 
-#[link_section = ".dmabuffers"]
-static mut RX_BUFFER: [u8; RX_BUFFER_SIZE * RX_COUNT] = [0; RX_BUFFER_SIZE * RX_COUNT];
-static mut RX_TRANSFER: [UsbEndpointTransferDescriptor; RX_COUNT] = [
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-    UsbEndpointTransferDescriptor::new(),
-];
+#[used]
+#[link_section = ".descriptors"]
+static mut TX_DTD: [UsbEndpointTransferDescriptor; TX_COUNT] =
+    [UsbEndpointTransferDescriptor::new(); TX_COUNT];
+
+#[used]
+#[link_section = ".descriptors"]
+static mut RX_DTD: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
 
 const TX_BUFFER_SIZE: usize = 512;
+
+#[used]
 static mut TX_BUFFER_TRANSIENT: Buffer<512, u8> = Buffer::new(0);
 
+#[used]
 #[link_section = ".dmabuffers"]
-static mut TX_BUFFER: [u8; TX_BUFFER_SIZE] = [0; TX_BUFFER_SIZE];
-static mut TX_TRANSFER: UsbEndpointTransferDescriptor = UsbEndpointTransferDescriptor::new();
-static mut TX_POS: usize = 0;
+static mut RX_BUFFER: BufferPage = BufferPage::new();
+
+#[used]
+#[link_section = ".dmabuffers"]
+static mut TX_BUFFER: [BufferPage; TX_COUNT] = [BufferPage::new(); TX_COUNT];
+
+#[used]
+static mut TX_AVAILABLE: usize = 0;
 
 const CDC_STATUS_INTERFACE: u8 = 0;
 const CDC_DATA_INTERFACE: u8 = 1;
@@ -59,10 +69,13 @@ pub fn usb_serial_init() {
     // Attach irq handler
     usb_attach_irq_handler(handle_irq);
 
-    // // Configure timer
+    // Configure timer
     assign(USB + 0x80, 0x0003E7); // 1ms
-    assign(USB + 0x84, (1 << 31) | (1 << 24) | 0x0003E7);
     assign(USBINTR, read_word(USBINTR) | TI0);
+}
+
+fn usb_timer_oneshot() {
+    assign(USB + 0x84, (1 << 31) | (1 << 30) | 0x0003E7);
 }
 
 fn handle_irq(irq_status: u32) {
@@ -113,9 +126,18 @@ fn usb_serial_configure(packet: SetupPacket) {
                 }),
             );
 
-            for page in 0..RX_COUNT {
-                rx_queue_transfer(page);
-            }
+            // Clear
+            mem::zero(
+                unsafe { &TX_DTD as *const UsbEndpointTransferDescriptor } as u32,
+                2048,
+            );
+
+            mem::zero(
+                unsafe { &RX_DTD as *const UsbEndpointTransferDescriptor } as u32,
+                2048,
+            );
+
+            rx_queue_transfer();
         }
         _ => {
             // Do nothing
@@ -124,20 +146,16 @@ fn usb_serial_configure(packet: SetupPacket) {
     }
 }
 
-fn rx_queue_transfer(page: usize) {
+fn rx_queue_transfer() {
     irq_disable(Irq::Usb1);
+    let page = 0;
     let rx_buffer_len = RX_BUFFER_SIZE as u32;
     let base_address = unsafe { RX_BUFFER.as_ptr() } as u32;
     let page_address = base_address + (RX_BUFFER_SIZE * page) as u32;
 
     arm_dcache_delete(page_address, rx_buffer_len);
-    usb_prepare_transfer(
-        unsafe { &mut RX_TRANSFER[page] },
-        page_address,
-        rx_buffer_len,
-        true,
-    );
-    usb_receive(CDC_RX_ENDPOINT as usize, unsafe { &mut RX_TRANSFER[page] });
+    usb_prepare_transfer(unsafe { &mut RX_DTD }, page_address, rx_buffer_len, true);
+    usb_receive(CDC_RX_ENDPOINT as usize, unsafe { &mut RX_DTD });
     irq_enable(Irq::Usb1);
 }
 
@@ -152,7 +170,7 @@ fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
     // // Read the bytes
     for index in start..end {
         unsafe {
-            BUFFER.enqueue(RX_BUFFER[index]);
+            BUFFER.enqueue(RX_BUFFER.bytes[index]);
         }
     }
 
@@ -165,9 +183,7 @@ fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
     // concurrency resilience but not really sure.
     if qh.first_transfer == qh.last_transfer && qh.first_transfer == 0 {
         // Process
-        for i in 0..RX_COUNT {
-            rx_queue_transfer(i as usize);
-        }
+        rx_queue_transfer();
     }
 }
 
@@ -194,8 +210,11 @@ fn tx_callback(packet: &UsbEndpointTransferDescriptor) {
         let qh = usb_queuehead(CDC_TX_ENDPOINT as usize, true);
         qh.first_transfer = 0;
         qh.last_transfer = 0;
+        unsafe {
+            TX_AVAILABLE = 0;
+        }
     } else {
-        debug_str(b"still active");
+        usb_timer_oneshot();
     }
 }
 
@@ -209,41 +228,58 @@ pub fn usb_serial_write(bytes: &[u8]) {
             TX_BUFFER_TRANSIENT.enqueue(byte.clone());
         }
     }
+    usb_timer_oneshot();
 }
 
 pub fn usb_serial_flush() {
     // Prepare
-    unsafe {
-        if TX_BUFFER_TRANSIENT.size() > 0 {
-            let status = TX_TRANSFER.status.clone();
-
-            if (status & 0x80) > 0 {
-                // Still active
-                return;
+    if unsafe { TX_BUFFER_TRANSIENT.size() } > 0 {
+        // Tail of RX
+        let mut page = 0;
+        for i in 0..TX_COUNT {
+            let dtd = unsafe { &mut TX_DTD[i] };
+            if (dtd.status.clone() & 0x80) == 0 {
+                page = i;
+                break;
             }
+        }
 
-            if (status & 0x68) > 0 {
-                // Error condition
-                return;
-            }
+        let dtd = unsafe { &mut TX_DTD[page] };
+        if (dtd.status.clone() & 0x80) > 0 {
+            usb_timer_oneshot();
+            // Still active
+            return;
+        }
 
-            // Copy the data.
-            for i in 0..TX_BUFFER_TRANSIENT.size() {
-                TX_BUFFER[i] = TX_BUFFER_TRANSIENT.data[i];
-            }
+        debug_str(b"flush");
 
-            usb_prepare_transfer(
-                &mut TX_TRANSFER,
-                TX_BUFFER.as_ptr() as u32,
+        unsafe {
+            arm_dcache_delete(
+                TX_BUFFER[page].as_ptr() as u32,
                 TX_BUFFER_TRANSIENT.size() as u32,
-                false,
             );
+        }
 
+        // Copy the data.
+        for i in 0..unsafe { TX_BUFFER_TRANSIENT.size() } {
+            unsafe {
+                TX_BUFFER[page].bytes[i] = TX_BUFFER_TRANSIENT.data[i];
+            }
+        }
+
+        usb_prepare_transfer(
+            dtd,
+            unsafe { TX_BUFFER[page].as_ptr() } as u32,
+            unsafe { TX_BUFFER_TRANSIENT.size() } as u32,
+            true,
+        );
+
+        unsafe {
+            TX_AVAILABLE += TX_BUFFER_TRANSIENT.size();
             // Clear buffer
             TX_BUFFER_TRANSIENT.clear();
-
-            usb_transmit(CDC_TX_ENDPOINT as usize, &mut TX_TRANSFER);
         }
+        usb_transmit(CDC_TX_ENDPOINT as usize, dtd);
     }
 }
 
