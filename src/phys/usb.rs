@@ -8,7 +8,6 @@ use descriptors::*;
 use models::*;
 use registers::*;
 
-use crate::debug::*;
 use crate::mem::zero;
 use crate::phys::addrs::*;
 use crate::phys::irq::*;
@@ -485,7 +484,6 @@ fn usb_prime_endpoint(index: u32, tx: bool) {
             return;
         } else if prime == 0 && stat == 0 {
             // Failure
-            debug_str(b"failed to prime");
             return;
         } else {
             assembly!("nop");
@@ -515,22 +513,20 @@ fn endpoint0_setup(packet: SetupPacket) {
                 None => {}
             }
 
-            debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
-            debug_hex(packet.w_value as u32, b"w_value");
-            debug_hex(packet.w_index as u32, b"w_index");
-            debug_hex(packet.w_length as u32, b"w_length");
-            debug_str(b"didn't find descriptor");
+            // debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
+            // debug_hex(packet.w_value as u32, b"w_value");
+            // debug_hex(packet.w_index as u32, b"w_index");
+            // debug_hex(packet.w_length as u32, b"w_length");
+            // debug_str(b"didn't find descriptor");
         }
         0x500 => {
             // Set Address
             endpoint0_receive(0, 0, false);
             assign(DEVICEADDR, ((packet.w_value as u32) << 25) | (1 << 24));
-            debug_u64(packet.w_value as u64, b"set_address");
             return;
         }
         0x900 => {
             // Set configuration
-            debug_str(b"5 set_configuration");
             unsafe {
                 CONFIGURATION = packet.w_value;
             }
@@ -540,52 +536,42 @@ fn endpoint0_setup(packet: SetupPacket) {
         }
         0x880 => {
             // Get configuration
-            debug_str(b"get_configuration");
         }
         0x80 => {
             // Get status (device)
-            debug_str(b"get_Status (device)");
         }
         0x82 => {
             // Get status (endpoint)
-            debug_str(b"get_status (endpoint)");
         }
         0x302 => {
             // Set feature
-            debug_str(b"6 set_feature");
         }
         0x102 => {
             // Clear feature
-            debug_str(b"clear_feature");
         }
         0x2021 => {
             // Set Line Coding
             if packet.w_length != 7 {
                 // Stall
-                debug_str(b"ep0 stall");
                 assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
                 return;
             }
 
-            debug_str(b"7 set line coding");
             endpoint0_receive(unsafe { ENDPOINT0_BUFFER.as_ptr() } as u32, 7, true);
             return;
         }
         0x2221 => {
             //Set control line state
-            debug_str(b"8 set control line state");
             endpoint0_receive(0, 0, false);
             return;
         }
         0x2321 => {
             //Send Break
-            debug_str(b"9 send break");
             endpoint0_receive(0, 0, false);
             return;
         }
         _ => {
-            debug_str(b"unknown request");
-            debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
+            // debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
         }
     }
 
@@ -717,7 +703,6 @@ fn handle_usb_irq() {
 
         if (port_status & 1) > 0 {
             // Attached
-            // debug_str(b"attached");
         }
     }
 
@@ -747,7 +732,7 @@ fn handle_usb_irq() {
         // Read the reset bit and make sure it is still active
         let port_status = read_word(PORTSC1);
         if (port_status & (1 << 8)) == 0 {
-            debug_str(b"[usb] ERROR PORT STATUS");
+            // ERROR PORT STATUS
         } else {
             // Still active
         }
@@ -847,10 +832,10 @@ fn endpoint0_complete() {
 
     // Read the buffer
     let buffer = unsafe { ENDPOINT0_BUFFER.bytes };
-    let mut bitrate = 0;
+    let mut _bitrate = 0;
 
     for i in 0..4 {
-        bitrate |= (buffer[i] as u64) << (i * 8);
+        _bitrate |= (buffer[i] as u64) << (i * 8);
     }
 }
 

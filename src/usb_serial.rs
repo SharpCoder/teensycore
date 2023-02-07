@@ -1,26 +1,15 @@
 use crate::{
-    arm_dcache_delete,
-    clock::nanos,
-    debug::{blink_hardware, debug_hex, debug_str, debug_u64},
-    dsb, mem,
-    phys::{
-        addrs::USB,
-        irq::{irq_disable, irq_enable},
-        usb::models::*,
-        usb::registers::*,
-    },
-    phys::{assign, irq::Irq, read_word, usb::descriptors::*, usb::*},
+    arm_dcache_delete, mem,
+    phys::{addrs::USB, usb::models::*, usb::registers::*},
+    phys::{assign, read_word, usb::descriptors::*, usb::*},
     system::{
         buffer::*,
         vector::{Queue, Stack},
     },
-    MS_TO_NANO,
 };
 
 // How many pages of data we support
-const RX_COUNT: usize = 3;
 const RX_BUFFER_SIZE: usize = 512;
-const TX_COUNT: usize = 3;
 const TX_BUFFER_SIZE: usize = 512;
 
 static mut BUFFER: Buffer<512, u8> = Buffer::new(0);
@@ -36,7 +25,6 @@ static mut RX_BUFFER: BufferPage = BufferPage::new();
 #[link_section = ".dmabuffers"]
 static mut TX_BUFFER: BufferPage = BufferPage::new();
 static mut CONFIGURED: bool = false;
-static mut TX_DTD_POS: usize = 0;
 
 const CDC_STATUS_INTERFACE: u8 = 0;
 const CDC_DATA_INTERFACE: u8 = 1;
@@ -153,11 +141,7 @@ fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
     }
 
     let qh = usb_get_queuehead(CDC_RX_ENDPOINT as usize, false);
-    let base_address = unsafe { RX_BUFFER.as_ptr() } as u32;
-    // let i = (packet.pointer0 - base_address) / RX_BUFFER_SIZE as u32;
     let len = (RX_BUFFER_SIZE as u32) - (packet.status >> 16) & 0x7FFF;
-    // let start = (i as usize) * RX_BUFFER_SIZE;
-    // let end = start + len as usize;
 
     // // Read the bytes
     for index in 0..len {

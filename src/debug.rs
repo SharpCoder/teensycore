@@ -1,7 +1,6 @@
 use crate::clock::uNano;
 use crate::phys::pins::*;
 use crate::serio::*;
-use crate::system::str::*;
 use crate::system::vector::{Stack, Vector};
 use crate::usb_serial::*;
 use crate::*;
