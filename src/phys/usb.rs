@@ -65,22 +65,34 @@ static mut CONFIGURATION_CALLBACKS: Vector<ConfigFn> = Vector::new();
 static mut CONFIGURATION: u16 = 0;
 static mut HIGHSPEED: bool = false;
 
-/// This method will attach a callback to be invoked
-/// when a setup packet is received. See usb_serial.rs
-/// for examples.
+/// Attach a callback to be invoked when a setup packet
+/// is received. See usb_serial.rs for examples.
 pub fn usb_attach_setup_callback(callback: ConfigFn) {
     unsafe {
         CONFIGURATION_CALLBACKS.push(callback);
     }
 }
 
+/// Attach a callback to be invoked every time an
+/// interrupt is handled.
 pub fn usb_attach_irq_handler(callback: IrqFn) {
     unsafe {
         IRQ_CALLBACKS.push(callback);
     }
 }
 
-pub fn usb_queuehead(endpoint: usize, tx: bool) -> &'static mut UsbEndpointQueueHead {
+/// Configure the VendorID and ProductID
+/// of the peripheral.
+pub fn usb_configure_codes(vid: u16, pid: u16) {
+    let descriptors = usb_get_descriptors();
+    descriptors.set_codes(vid, pid);
+}
+
+/// Retrieve the specific queue head based on endpoint
+/// and direction.
+///
+/// Returns a mutable UsbEndpointQueueHead.
+pub fn usb_get_queuehead(endpoint: usize, tx: bool) -> &'static mut UsbEndpointQueueHead {
     unsafe {
         let index = match tx {
             true => endpoint * 2 + 1,
@@ -91,9 +103,9 @@ pub fn usb_queuehead(endpoint: usize, tx: bool) -> &'static mut UsbEndpointQueue
     }
 }
 
+/// Boot up the usb clocks. This method
+/// takes many milliseconds to run.
 pub fn usb_start_clock() {
-    wait_exact_ns(MS_TO_NANO * 20);
-
     loop {
         let pll_usb1_status = read_word(PLL1_USB1_ADDR);
         if (pll_usb1_status & (0x1 << 13)) == 0 {
@@ -137,6 +149,9 @@ pub fn usb_start_clock() {
     assign(USB + 0x160, 0x0404);
 }
 
+/// This method will initialize the usb subsystem by priming
+/// the endpoint queues, starting irq, and enabling the
+/// run/stop bit of the USB OTG1 Core.
 pub fn usb_initialize() {
     // Configure the descriptors
     usb_initialize_descriptors();
@@ -160,11 +175,17 @@ pub fn usb_initialize() {
 
     usb_set_mode(UsbMode::DEVICE);
     endpoint0_initialize();
-    usb_irq_enable(0x143);
+
+    assign(USBINTR, 0x143);
+
+    irq_attach(Irq::Usb1, handle_usb_irq);
+    irq_priority(Irq::Usb1, 32);
+    irq_enable(Irq::Usb1);
 
     usb_cmd(1); // Run/Stop bit
 }
 
+/// Set the mode of the USB device.
 pub fn usb_set_mode(mode: UsbMode) {
     match mode {
         UsbMode::DEVICE => {
@@ -181,24 +202,9 @@ fn waitfor(addr: u32) {
     }
 }
 
-/// Enable all usb interrupts
-pub fn usb_irq_enable(value: u32) {
-    assign(USBINTR, value);
-
-    irq_attach(Irq::Usb1, handle_usb_irq);
-    irq_priority(Irq::Usb1, 32);
-    irq_enable(Irq::Usb1);
-}
-
 /// Clear specific interrupts from the status field.
 pub fn usb_irq_clear(value: u32) {
     assign(USBSTS, value);
-}
-
-/// Disable all usb interrupts
-pub fn usb_irq_disable() {
-    irq_disable(Irq::Usb1);
-    assign(USBINTR, 0x0);
 }
 
 /// Internal method to initialize the control endpoints
@@ -281,8 +287,8 @@ pub fn usb_setup_endpoint(
     tx_config: Option<EndpointConfig>,
     rx_config: Option<EndpointConfig>,
 ) {
-    let tx_qh = usb_queuehead(index, true);
-    let rx_qh = usb_queuehead(index, false);
+    let tx_qh = usb_get_queuehead(index, true);
+    let rx_qh = usb_get_queuehead(index, false);
     let ep_control_addr = USB + 0x1C0 + (index as u32) * 4;
 
     let isochornous = 1;
@@ -360,13 +366,19 @@ pub fn usb_setup_endpoint(
     }
 }
 
+/// This method will configure a UsbEndpointTransferDescriptor
+/// based on various flags. However, DTD structures can
+/// only be modified while they are not in an active state.
+///
+/// This method returns true if it succeeded in modifying the dtd
+/// or false if something went wrong.
 pub fn usb_prepare_transfer(
     transfer_queue: &mut UsbEndpointTransferDescriptor,
     addr: u32,
     len: u32,
     notify: bool,
-) {
-    if (transfer_queue.status & 0xFF) == 0 {
+) -> bool {
+    if (transfer_queue.status & 0x80) == 0 {
         transfer_queue.next = 1;
         transfer_queue.status = (len << 16) | (1 << 7);
         transfer_queue.pointer0 = addr;
@@ -378,21 +390,28 @@ pub fn usb_prepare_transfer(
         if notify {
             transfer_queue.status |= 1 << 15;
         }
-    } else {
-        debug_str(b"attempt to modify active dtd failed");
+
+        return true;
     }
+
+    // Something went wrong.
+    return false;
 }
 
+/// This method will enqueue the transfer descriptor into the endpoint
+/// and prime it for receiving new data.
 pub fn usb_receive(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
     schedule_transfer(endpoint as u32, false, transfer);
 }
 
+/// This method will enqueue the transfer descriptor into the endpoint
+/// and prime it for transmitting new data.
 pub fn usb_transmit(endpoint: usize, transfer: &mut UsbEndpointTransferDescriptor) {
     schedule_transfer(endpoint as u32, true, transfer);
 }
 
 fn schedule_transfer(ep: u32, tx: bool, transfer: &mut UsbEndpointTransferDescriptor) {
-    let qh = usb_queuehead(ep as usize, tx);
+    let qh = usb_get_queuehead(ep as usize, tx);
     let mask = match tx {
         true => 1 << (ep + 16),
         false => 1 << ep,
@@ -703,19 +722,19 @@ fn handle_usb_irq() {
     }
 
     if (irq_status & SEI) > 0 {
-        debug_str(b"[usb] system error flag detected");
+        // System error flag
     }
 
     if (irq_status & USBERRINT) > 0 {
-        debug_str(b" -> [usb] USBERRINT flag detected");
+        // Interrupt error flag
     }
 
     if (irq_status & SLI) > 0 {
-        debug_str(b" -> [usb] suspend");
+        // Enter suspend mode
     }
 
     if (irq_status & URI) > 0 {
-        debug_str(b" -> [usb] URI flag detected");
+        // Reset device
         assign(ENDPTSTAT, read_word(ENDPTSTAT));
         assign(ENDPTCOMPLETE, read_word(ENDPTCOMPLETE));
 
@@ -772,7 +791,8 @@ fn handle_usb_irq() {
             waitfor(ENDPTFLUSH);
 
             if (read_word(ENDPTSTAT) & ((1 << 16) | 1)) > 0 {
-                debug_str(b"Endpoint Flush FAILED");
+                // FLUSH FAILED
+                // TODO: Something
             }
 
             // Setup
@@ -798,7 +818,7 @@ fn handle_usb_irq() {
             for idx in 1..MAX_ENDPOINTS {
                 let mask = 1 << (16 + idx);
                 if (complete_status & mask) > 0 {
-                    run_callbacks(usb_queuehead(idx, true));
+                    run_callbacks(usb_get_queuehead(idx, true));
                 }
             }
 
@@ -806,7 +826,7 @@ fn handle_usb_irq() {
             for idx in 1..MAX_ENDPOINTS {
                 let mask = 1 << idx;
                 if (complete_status & mask) > 0 {
-                    run_callbacks(usb_queuehead(idx, false));
+                    run_callbacks(usb_get_queuehead(idx, false));
                 }
             }
         }
@@ -832,8 +852,6 @@ fn endpoint0_complete() {
     for i in 0..4 {
         bitrate |= (buffer[i] as u64) << (i * 8);
     }
-
-    debug_u64(bitrate, b"usb serial bitrate");
 }
 
 fn noop(_packet: &UsbEndpointTransferDescriptor) {}

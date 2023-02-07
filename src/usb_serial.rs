@@ -83,8 +83,6 @@ fn usb_serial_configure(packet: SetupPacket) {
         // SET_CONFIGURATION packet
         0x900 => {
             // Configure the endpoints.
-            debug_str(b"configure endpoints from usb_serial");
-
             usb_setup_endpoint(
                 CDC_ACM_ENDPOINT as usize,
                 Some(EndpointConfig {
@@ -154,7 +152,7 @@ fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
         return;
     }
 
-    let qh = usb_queuehead(CDC_RX_ENDPOINT as usize, false);
+    let qh = usb_get_queuehead(CDC_RX_ENDPOINT as usize, false);
     let base_address = unsafe { RX_BUFFER.as_ptr() } as u32;
     // let i = (packet.pointer0 - base_address) / RX_BUFFER_SIZE as u32;
     let len = (RX_BUFFER_SIZE as u32) - (packet.status >> 16) & 0x7FFF;
@@ -181,14 +179,22 @@ fn rx_callback(packet: &UsbEndpointTransferDescriptor) {
     }
 }
 
+/// Returns how many bytes are available to read from
+/// the buffer.
 pub fn usb_serial_available() -> usize {
     return unsafe { BUFFER.size() };
 }
 
+/// Returns the next available byte in the buffer
+/// and consumes it. If there are no bytes available,
+/// this method will return None.
 pub fn usb_serial_read() -> Option<u8> {
     return unsafe { BUFFER.dequeue() };
 }
 
+/// Return's the next available byte in the buffer
+/// without consuming it. If there are no bytes available,
+/// this method will return None.
 pub fn usb_serial_peek() -> Option<u8> {
     unsafe {
         if BUFFER.size() > 0 {
@@ -204,10 +210,22 @@ fn tx_callback(packet: &UsbEndpointTransferDescriptor) {
     }
 }
 
+/// Write a single byte to the USB host.
+///
+/// ```no_run
+/// use teensycore::usb_serial::*;
+/// usb_serial_putchar('!');
+/// ```
 pub fn usb_serial_putchar(byte: u8) {
     usb_serial_write(&[byte]);
 }
 
+/// Write an array of bytes to the USB host.
+///
+/// ```no_run
+/// use teensycore::usb_serial::*;
+/// usb_serial_write(b"Hello, world!");
+/// ```
 pub fn usb_serial_write(bytes: &[u8]) {
     unsafe {
         for byte in bytes {
@@ -217,37 +235,52 @@ pub fn usb_serial_write(bytes: &[u8]) {
     usb_timer_oneshot();
 }
 
-pub fn usb_serial_flush() {
+/// This method will flush the current queue of data to
+/// the usb host. It is invoked automatically based
+/// on interrupts, but you can manually flush too if
+/// you'd like. It will short-cirucit if all the
+/// transfer queues are still active or if the USB host
+/// hasn't finished connecting.
+///
+/// Returns how many bytes were written.
+pub fn usb_serial_flush() -> u32 {
     // Prepare
     if unsafe { TX_BUFFER_TRANSIENT.size() } > 0 {
         // Verify we are in a good, configured state.
         if unsafe { CONFIGURED == false } {
-            return;
+            return 0;
         }
 
         let dtd = unsafe { &mut TX_DTD };
 
         // Check if it's done
+        if (dtd.status & 0x80) > 0 {
+            return 0;
+        }
+
+        // Check for error condition
         if (dtd.status & 0xFF) > 0 {
-            return;
+            return 0;
         }
 
         // Copy the data.
-        let len = unsafe { TX_BUFFER_TRANSIENT.size() };
-        for i in 0..len {
-            unsafe {
-                TX_BUFFER.bytes[i] = TX_BUFFER_TRANSIENT.data[i];
-            }
-        }
+        let len = unsafe { TX_BUFFER_TRANSIENT.size() } as u32;
+        let src_ptr = unsafe { TX_BUFFER_TRANSIENT.data.as_ptr() } as u32;
+        let dst_ptr = unsafe { TX_BUFFER.as_ptr() } as u32;
+
+        mem::copy(src_ptr, dst_ptr, len);
 
         unsafe {
             // Clear buffer
             TX_BUFFER_TRANSIENT.clear();
         }
 
-        usb_prepare_transfer(dtd, unsafe { TX_BUFFER.as_ptr() } as u32, len as u32, true);
+        usb_prepare_transfer(dtd, dst_ptr, len, true);
         usb_transmit(CDC_TX_ENDPOINT as usize, dtd);
+        return len;
     }
+
+    return 0;
 }
 
 fn setup_cdc_descriptors() {

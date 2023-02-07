@@ -1,15 +1,13 @@
 //! Serial
 //!
-//! This example demonstrates how to output serial data over the wire.
-//! It uses the built-in hardware-level UART controller in order to
+//! This example demonstrates how to output serial data over USB.
+//! It uses the built-in hardware-level USB OTG controller in order to
 //! transmit data.
 //!
-//! A fun way to verify this is working would be to hook up the RX pin
-//! of an arduino to pin 1 on the teensy. Then you can open
-//! "serial monitor" on your computer and watch the data coming
-//! back from the teensy.
-//!
-//! Note: The default baud rate is configured to be 115200.
+//! Specifically, this code will wait to receive some bytes from the
+//! USB device and, if any are found, it will echo them back. You can
+//! actually use the Arduino Serial Monitor to echo commands from the
+//! input box back out to the terminal.
 #![feature(lang_items)]
 #![crate_type = "staticlib"]
 #![no_std]
@@ -20,10 +18,12 @@ use teensycore::usb_serial::*;
 use teensycore::*;
 
 main!({
-    serial_init(SerioDevice::Default);
-
     loop {
-        usb_serial_write(b"ping!");
-        wait_ns(S_TO_NANO);
+        match usb_serial_read() {
+            Some(byte) => {
+                usb_serial_putchar(byte);
+            }
+            None => {}
+        }
     }
 });

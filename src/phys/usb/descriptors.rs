@@ -7,8 +7,8 @@ use crate::system::vector::Vector;
 const MANUFACTURER_NAME: &[u8] = b"Debuggle";
 const PRODUCT_NAME: &[u8] = b"Teensycore";
 const SERIAL_NUMBER: &[u8] = b"0000";
-const PRODUCT_ID: u16 = 0xBADD;
 const VENDOR_ID: u16 = 0x1337;
+const PRODUCT_ID: u16 = 0xBADD;
 
 #[derive(Copy, Clone)]
 pub struct Descriptor2 {
@@ -18,6 +18,8 @@ pub struct Descriptor2 {
 }
 
 pub struct Descriptors {
+    pub vid: u16,
+    pub pid: u16,
     pub descriptor_list: Vector<Descriptor2>,
     pub class_specific_interfaces: Vector<Descriptor2>,
 }
@@ -25,6 +27,8 @@ pub struct Descriptors {
 impl Descriptors {
     pub const fn new() -> Self {
         return Descriptors {
+            vid: 0x1337,
+            pid: 0xBADD,
             descriptor_list: Vector::new(),
             class_specific_interfaces: Vector::new(),
         };
@@ -65,6 +69,11 @@ impl Descriptors {
         });
     }
 
+    pub fn set_codes(&mut self, vid: u16, pid: u16) {
+        self.vid = vid;
+        self.pid = pid;
+    }
+
     pub fn get_bytes(&self, w_value: u16, w_index: u16) -> Option<Vector<u8>> {
         for descriptor in self.descriptor_list.into_iter() {
             if descriptor.w_value == w_value && descriptor.w_index == w_index {
@@ -76,6 +85,14 @@ impl Descriptors {
                     if interface.w_value == w_value && interface.w_index == w_index {
                         bytes.join(&interface.payload);
                     }
+                }
+
+                // Override the VendorID and ProductID
+                if w_value == 0x100 && w_index == 0x00 {
+                    bytes.put(8, lsb(self.vid));
+                    bytes.put(9, msb(self.vid));
+                    bytes.put(10, lsb(self.pid));
+                    bytes.put(11, msb(self.pid));
                 }
 
                 // Config type
