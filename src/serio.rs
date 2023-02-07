@@ -440,6 +440,13 @@ pub fn serial_write(device: SerioDevice, bytes: &[u8]) {
     uart.write(bytes);
 }
 
+pub fn serial_write_vec(device: SerioDevice, bytes: &Vector<u8>) {
+    let uart = get_uart_interface(device);
+    for byte in bytes.into_iter() {
+        uart.write(&[byte]);
+    }
+}
+
 pub fn serial_write_str(device: SerioDevice, bytes: &mut Str) {
     let uart = get_uart_interface(device);
     for byte in bytes.into_iter() {

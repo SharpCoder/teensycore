@@ -2,34 +2,37 @@
 //! string operations. It is an efficient datastructure that
 //! leverages heap-allocation, but re-uses memory whenever
 //! possible.
-//! 
+//!
 //! Str is implemented with a block-allocation
 //! strategy, where segments of memory are reserved as
-//! chunks of bytes (or pages). This allows reduced calls 
-//! to alloc, as well as efficient array operations 
-//! that are optimized for insert and lookup. 
-//! 
+//! chunks of bytes (or pages). This allows reduced calls
+//! to alloc, as well as efficient array operations
+//! that are optimized for insert and lookup.
+//!
 //! This implementation does not lend itself well to
 //! removing individual items at arbitrary indexes.
 //! For now, such functionality is simply not implemented.
 //! If you need stack or queue like operations, consider
 //! a Vector instead.
 
-use crate::{mem::*, math::min};
 use crate::system::vector::*;
-use core::{iter::{Iterator, IntoIterator}, cmp::Ordering};
+use crate::{math::min, mem::*};
+use core::{
+    cmp::Ordering,
+    iter::{IntoIterator, Iterator},
+};
 
 const CHAR_BLOCK_SIZE: usize = 32;
 
 /// A thin wrapper around Str::with_content($X)
-/// 
+///
 /// Use this to create an Str object without having
 /// to namespace anything.
-/// 
+///
 /// ```no-test
 /// use teensycore::*;
 /// use teensycore::system::str::*;
-/// 
+///
 /// let var = str!(b"hello, world!");
 /// ```
 #[macro_export]
@@ -39,9 +42,8 @@ macro_rules! str {
     }};
 }
 
-
 pub trait StringOps<T> {
-    fn split(&self, target: u8) -> Vector<Str>; 
+    fn split(&self, target: u8) -> Vector<Str>;
     fn index_of(&self, target: &T) -> Option<usize>;
     fn contains(&self, target: &T) -> bool;
     fn reverse(&mut self) -> &mut Self;
@@ -73,9 +75,7 @@ pub struct Str {
 }
 
 // This device is only 1 thread so... everyone gets a sync!
-unsafe impl Sync for Str  {
-
-}
+unsafe impl Sync for Str {}
 
 impl Iterator for StrIter {
     type Item = u8;
@@ -84,7 +84,7 @@ impl Iterator for StrIter {
         match self.current {
             None => {
                 return None;
-            },
+            }
             Some(node) => {
                 let result = unsafe { (*node).data[self.index] };
                 self.index += 1;
@@ -103,9 +103,7 @@ impl Iterator for StrIter {
     }
 }
 
-
 impl Str {
-
     pub const fn new() -> Self {
         return Str {
             blocks: 0,
@@ -145,7 +143,7 @@ impl Str {
 
         return result;
     }
-    
+
     /// Return the length of bytes used inside the buffer.
     pub fn len(&self) -> usize {
         return self.index;
@@ -172,10 +170,10 @@ impl Str {
 
     /// Returns a new Str containing the characters
     /// between the indexes.
-    /// 
+    ///
     /// This method returns a copy of the data in question,
     /// not a mutable reference. Don't forget to call `drop()`
-    /// on the resulting Str instance once you are 
+    /// on the resulting Str instance once you are
     /// done with it.
     pub fn slice(&self, start: usize, end: usize) -> Str {
         if start > end || end > self.index || self.head.is_none() {
@@ -187,7 +185,7 @@ impl Str {
         // TODO: This is extremely inefficient. Improve
         // the efficiency by iterating over blocks
         // and bulk copying them as needed.
-        for idx in start ..= end {
+        for idx in start..=end {
             slice.append(&[self.char_at(idx).unwrap()]);
         }
 
@@ -203,10 +201,9 @@ impl Str {
         let block = index / CHAR_BLOCK_SIZE;
         let mut ptr = self.head.unwrap();
 
-        for _ in 0 .. block {
+        for _ in 0..block {
             ptr = unsafe { (*ptr).next.unwrap() };
         }
-
 
         let access_point = index - (block * CHAR_BLOCK_SIZE);
         return Some(unsafe { (*ptr).data[access_point] });
@@ -220,7 +217,7 @@ impl Str {
         let block = index / CHAR_BLOCK_SIZE;
         let mut ptr = self.head.unwrap();
 
-        for _ in 0 .. block {
+        for _ in 0..block {
             ptr = unsafe { (*ptr).next.unwrap() };
         }
 
@@ -269,6 +266,14 @@ impl Str {
         return ret;
     }
 
+    pub fn as_vector(&self) -> Vector<u8> {
+        let mut result = Vector::new();
+        for char in self.into_iter() {
+            result.push(char);
+        }
+        return result;
+    }
+
     /// Returns an iterator of this Str instance.
     pub fn into_iter(&self) -> StrIter {
         return StrIter {
@@ -285,7 +290,7 @@ impl Str {
         match self.head {
             None => {
                 // There is nothing to deallocate
-            },
+            }
             Some(node) => {
                 // We can deallocate this
                 let mut ptr = node;
@@ -320,7 +325,7 @@ impl Str {
 
         // Verify we do not over-extend capacity.
         match self.capacity {
-            None => { },
+            None => {}
             Some(capacity) => {
                 if self.index + bytes_to_copy > capacity {
                     self._buffer_overflow();
@@ -328,14 +333,14 @@ impl Str {
                 }
             }
         }
-        
+
         let mut tail = self.tail.unwrap();
-        for i in 0 .. bytes_to_copy {
+        for i in 0..bytes_to_copy {
             if unsafe { (*tail).used == CHAR_BLOCK_SIZE } {
                 self._allocate_block();
                 tail = self.tail.unwrap();
             }
-    
+
             // Place the character in the spot
             unsafe {
                 let block_index = (*tail).used;
@@ -349,17 +354,14 @@ impl Str {
     }
 
     /// This method is invoked when a buffer overflow happens.
-    fn _buffer_overflow(&self) {
-
-    }
+    fn _buffer_overflow(&self) {}
 
     /// Allocates a new block at the end
     /// of the buffer, if necessary.
-    /// 
+    ///
     /// This method is aware of orphaned blocks
     /// and will re-use them as-needed.
     fn _allocate_block(&mut self) {
-
         // Check if we have any orphaned blocks to use.
         if self.tail.is_some() && unsafe { (*self.tail.unwrap()).next.is_some() } {
             // Update tail
@@ -367,11 +369,10 @@ impl Str {
             return;
         }
 
-
         let block = alloc();
         self.blocks += 1;
 
-        unsafe { 
+        unsafe {
             (*block) = CharBlockNode {
                 data: [0; CHAR_BLOCK_SIZE],
                 next: None,
@@ -384,7 +385,7 @@ impl Str {
                 // Add to head
                 self.head = Some(block);
                 self.tail = self.head;
-            },
+            }
             Some(node) => {
                 // Add to the node
                 unsafe { (*node).next = Some(block) };
@@ -403,19 +404,18 @@ impl IntoIterator for Str {
             current: self.head,
             index: 0,
             size: self.index,
-        }
+        };
     }
 }
 
 impl StringOps<Str> for Str {
-
     /// Split the string into a vector of other strings delimited
     /// by the attribute provided.
-    /// 
+    ///
     /// ```
     /// use teensycore::*;
     /// use teensycore::system::str::*;
-    /// 
+    ///
     /// let string = str!(b"hello\nworld");
     /// let strings = string.split(b'\n');
     /// ```
@@ -432,14 +432,13 @@ impl StringOps<Str> for Str {
             }
         }
 
-
         if temp.len() > 0 {
             result.push(Str::from_str(&temp));
         }
 
         temp.clear();
         temp.drop();
-        
+
         return result;
     }
 
@@ -458,16 +457,16 @@ impl StringOps<Str> for Str {
         // The algorithm isn't great but it works like this:
         let mut idx = 0;
         let signal = target.char_at(0).unwrap();
-        
+
         for char in self.into_iter() {
             if char == signal {
                 // Loop to see if the rest of it matches
                 if idx + target.len() > self.len() {
                     return None;
                 }
-                
+
                 let mut matched = true;
-                for r in 0 .. target.len() {
+                for r in 0..target.len() {
                     if self.char_at(idx + r) != target.char_at(r) {
                         matched = false;
                         break;
@@ -492,7 +491,7 @@ impl StringOps<Str> for Str {
 
         // This is going to suck
         let mut tail = self.len() - 1;
-        for idx in 0 .. self.len() / 2 {
+        for idx in 0..self.len() / 2 {
             let temp = self.char_at(idx).unwrap();
             self.put(idx, self.char_at(tail).unwrap());
             self.put(tail, temp);
@@ -502,14 +501,13 @@ impl StringOps<Str> for Str {
     }
 }
 
-
 impl PartialEq for Str {
     fn eq(&self, other: &Self) -> bool {
         if self.len() != other.len() {
             return false;
         }
 
-        for idx in 0 .. self.len() {
+        for idx in 0..self.len() {
             let left = self.char_at(idx).unwrap();
             let right = other.char_at(idx).unwrap();
             if left != right {
@@ -525,7 +523,7 @@ impl PartialEq for Str {
 impl PartialOrd for Str {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let min_count = min(self.len(), other.len());
-        for idx in 0 .. min_count {
+        for idx in 0..min_count {
             let left = self.char_at(idx).unwrap();
             let right = other.char_at(idx).unwrap();
 
@@ -552,13 +550,13 @@ mod test_string_builder {
 
     fn sb_sb_compare(left: &mut Str, right: &mut Str) {
         assert_eq!(left.len(), right.len());
-        for idx in 0 .. left.len() {
+        for idx in 0..left.len() {
             assert_eq!(left.char_at(idx), right.char_at(idx));
         }
     }
 
     fn sb_equals(sb: Str, text: &[u8]) {
-        for i in 0 .. text.len() {
+        for i in 0..text.len() {
             assert_eq!(sb.char_at(i).unwrap(), text[i]);
         }
     }
@@ -643,7 +641,7 @@ mod test_string_builder {
         for char in sb.into_iter() {
             assert_eq!(comparator[idx], char);
             idx += 1;
-        }   
+        }
     }
 
     #[test]
@@ -686,7 +684,7 @@ mod test_string_builder {
     fn test_split() {
         let target = str!(b"hello:world");
         let strs = target.split(b':');
-        
+
         sb_sb_compare(&mut strs.get(0).unwrap(), &mut str!(b"hello"));
         sb_sb_compare(&mut strs.get(1).unwrap(), &mut str!(b"world"));
     }
