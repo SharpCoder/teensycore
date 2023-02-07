@@ -4,11 +4,9 @@ use crate::system::vector::Array;
 use crate::system::vector::Stack;
 use crate::system::vector::Vector;
 
-const MANUFACTURER_NAME: &[u8] = b"Debuggle";
+const MANUFACTURER_NAME: &[u8] = b"SharpCoder";
 const PRODUCT_NAME: &[u8] = b"Teensycore";
-const SERIAL_NUMBER: &[u8] = b"0000";
-const VENDOR_ID: u16 = 0x1337;
-const PRODUCT_ID: u16 = 0xBADD;
+const SERIAL_NUMBER: &[u8] = b"1337";
 
 #[derive(Copy, Clone)]
 pub struct Descriptor2 {
@@ -27,8 +25,8 @@ pub struct Descriptors {
 impl Descriptors {
     pub const fn new() -> Self {
         return Descriptors {
-            vid: 0x1337,
-            pid: 0xBADD,
+            vid: 0x16C0,
+            pid: 0x0483,
             descriptor_list: Vector::new(),
             class_specific_interfaces: Vector::new(),
         };
@@ -126,24 +124,24 @@ pub fn usb_initialize_descriptors() {
         0x100,
         0x0,
         &[
-            18,              // bLength
-            1,               // bDescriptorType
-            0x0,             // bcdUSB lsb
-            0x02,            // bcdUSB msb
-            2,               // bDeviceClass (2 = Communication)
-            2,               // bDeviceSubClass
-            1,               // bDeviceProtocol
-            64,              // bMaxPacketSize0
-            lsb(VENDOR_ID),  // VendorID
-            msb(VENDOR_ID),  // VendorID
-            lsb(PRODUCT_ID), // ProductID
-            msb(PRODUCT_ID), // ProductID
-            0x79,            // bcdDevice
-            0x02,            // bcdDevice
-            1,               // iManufacturer (Index of string descriptor describing manufacturer)
-            2,               // iProduct
-            3,               // iSerialNumber
-            1,               // bNumConfigurations
+            18,   // bLength
+            1,    // bDescriptorType
+            0x0,  // bcdUSB lsb
+            0x02, // bcdUSB msb
+            2,    // bDeviceClass (2 = Communication)
+            2,    // bDeviceSubClass
+            1,    // bDeviceProtocol
+            64,   // bMaxPacketSize0
+            0,    // VendorID (injected with code)
+            0,    // VendorID (injected with code)
+            0,    // ProductID (injected with code)
+            0,    // ProductID (injected with code)
+            0x79, // bcdDevice
+            0x02, // bcdDevice
+            1,    // iManufacturer (Index of string descriptor describing manufacturer)
+            2,    // iProduct
+            3,    // iSerialNumber
+            1,    // bNumConfigurations
         ],
     );
 
