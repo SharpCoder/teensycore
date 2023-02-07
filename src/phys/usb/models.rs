@@ -26,7 +26,7 @@ impl BufferPage {
     }
 
     pub fn as_ptr(&self) -> *const BufferPage {
-        return unsafe { self as *const BufferPage };
+        return self as *const BufferPage;
     }
 }
 
@@ -103,8 +103,7 @@ impl UsbEndpointQueueHead {
     }
 }
 
-#[repr(C, align(256))]
-#[derive(Copy, Clone)]
+#[repr(C, align(2048))]
 pub struct UsbEndpointTransferDescriptor {
     pub next: u32,
     pub status: u32,
@@ -126,5 +125,15 @@ impl UsbEndpointTransferDescriptor {
             pointer3: 0,
             pointer4: 0,
         };
+    }
+
+    pub fn clear(&mut self) {
+        self.next = 0;
+        self.status = 0;
+        self.pointer0 = 0;
+        self.pointer1 = 0;
+        self.pointer2 = 0;
+        self.pointer3 = 0;
+        self.pointer4 = 0;
     }
 }

@@ -46,12 +46,10 @@ static mut ENDPOINT_HEADERS: [UsbEndpointQueueHead; MAX_ENDPOINTS * 2] =
 
 #[link_section = ".dmabuffers"]
 static mut USB_DESCRIPTOR_BUFFER: BufferPage = BufferPage::new();
-// static mut USB_DESCRIPTOR_BUFFER: [u8; 512] = [0; 512];
 
 #[no_mangle]
 #[link_section = ".dmabuffers"]
 static mut ENDPOINT0_BUFFER: BufferPage = BufferPage::new();
-// static mut ENDPOINT0_BUFFER: [u8; 8] = [0; 8];
 
 #[no_mangle]
 static mut ENDPOINT0_TRANSFER_DATA: UsbEndpointTransferDescriptor =
@@ -165,8 +163,6 @@ pub fn usb_initialize() {
     usb_irq_enable(0x143);
 
     usb_cmd(1); // Run/Stop bit
-
-    debug_str(b"[usb] booting...");
 }
 
 pub fn usb_set_mode(mode: UsbMode) {
@@ -244,13 +240,8 @@ fn configure_ep(qh: &mut UsbEndpointQueueHead, config: u32, cb: Option<TransferC
     }
 }
 
-fn run_callbacks(qh_index: usize, qh: &mut UsbEndpointQueueHead) {
+fn run_callbacks(qh: &mut UsbEndpointQueueHead) {
     let mut transfer_addr = qh.first_transfer;
-
-    if transfer_addr <= 1 {
-        return;
-    }
-
     while transfer_addr > 1 {
         // Get the transfer
         let transfer = unsafe {
@@ -259,9 +250,9 @@ fn run_callbacks(qh_index: usize, qh: &mut UsbEndpointQueueHead) {
                 .unwrap()
         };
 
-        // Wait some long time and then check if it's still active.
-        if (transfer.status & (1 << 7)) > 0 {
-            qh.first_transfer = (transfer as *const UsbEndpointTransferDescriptor) as u32;
+        // Still active
+        if (transfer.status & 0x80) > 0 {
+            qh.first_transfer = transfer_addr;
             break;
         }
 
@@ -375,7 +366,7 @@ pub fn usb_prepare_transfer(
     len: u32,
     notify: bool,
 ) {
-    if (transfer_queue.status & 0x80) == 0 {
+    if (transfer_queue.status & 0xFF) == 0 {
         transfer_queue.next = 1;
         transfer_queue.status = (len << 16) | (1 << 7);
         transfer_queue.pointer0 = addr;
@@ -520,7 +511,7 @@ fn endpoint0_setup(packet: SetupPacket) {
         }
         0x900 => {
             // Set configuration
-            debug_str(b"set_configuration");
+            debug_str(b"5 set_configuration");
             unsafe {
                 CONFIGURATION = packet.w_value;
             }
@@ -542,7 +533,7 @@ fn endpoint0_setup(packet: SetupPacket) {
         }
         0x302 => {
             // Set feature
-            debug_str(b"set_feature");
+            debug_str(b"6 set_feature");
         }
         0x102 => {
             // Clear feature
@@ -557,19 +548,19 @@ fn endpoint0_setup(packet: SetupPacket) {
                 return;
             }
 
-            debug_str(b"set line coding");
+            debug_str(b"7 set line coding");
             endpoint0_receive(unsafe { ENDPOINT0_BUFFER.as_ptr() } as u32, 7, true);
             return;
         }
         0x2221 => {
             //Set control line state
-            debug_str(b"set control line state");
+            debug_str(b"8 set control line state");
             endpoint0_receive(0, 0, false);
             return;
         }
         0x2321 => {
             //Send Break
-            debug_str(b"send break");
+            debug_str(b"9 send break");
             endpoint0_receive(0, 0, false);
             return;
         }
@@ -684,21 +675,15 @@ fn endpoint0_receive(addr: u32, len: u32, notify: bool) {
 }
 
 fn handle_usb_irq() {
-    let show_messages = false;
+    irq_disable(Irq::Usb1);
+
     let irq_status = read_word(USBSTS);
     assembly!("nop"); // Need this. no idea why.
     usb_irq_clear(irq_status);
 
-    // debug_str(b"[usb] irq begin");
-    if (irq_status & HCH) > 0 {
-        debug_str(b"[usb] DCHalted!!!!!!!!!");
-    }
+    if (irq_status & HCH) > 0 {}
 
     if (irq_status & PCI) > 0 {
-        if show_messages {
-            debug_str(b" -> [usb] Port change");
-        }
-
         // Check which mode we are in
         let port_status = read_word(PORTSC1);
         if port_status & (0x1 << 9) > 0 {
@@ -719,16 +704,6 @@ fn handle_usb_irq() {
 
     if (irq_status & SEI) > 0 {
         debug_str(b"[usb] system error flag detected");
-    }
-
-    if (irq_status & NAKE) > 0 {
-        debug_str(b" -> [usb] NAK flag detected");
-    }
-
-    if (irq_status & SRI) > 0 {
-        //     if show_messages {
-        //         debug_str(b" -> [usb] Start of Frame flag detected");
-        //     }
     }
 
     if (irq_status & USBERRINT) > 0 {
@@ -819,15 +794,19 @@ fn handle_usb_irq() {
         if complete_status > 0 {
             assign(ENDPTCOMPLETE, complete_status);
 
-            unsafe {
-                // Run the transmit callbacks
-                for idx in 1..MAX_ENDPOINTS {
-                    run_callbacks(idx, usb_queuehead(idx, true));
+            // Run the transmit callbacks
+            for idx in 1..MAX_ENDPOINTS {
+                let mask = 1 << (16 + idx);
+                if (complete_status & mask) > 0 {
+                    run_callbacks(usb_queuehead(idx, true));
                 }
+            }
 
-                // Run the receive callbacks
-                for idx in 1..MAX_ENDPOINTS {
-                    run_callbacks(idx, usb_queuehead(idx, false));
+            // Run the receive callbacks
+            for idx in 1..MAX_ENDPOINTS {
+                let mask = 1 << idx;
+                if (complete_status & mask) > 0 {
+                    run_callbacks(usb_queuehead(idx, false));
                 }
             }
         }
@@ -839,7 +818,7 @@ fn handle_usb_irq() {
         }
     }
 
-    // debug_str(b"[usb] / irq serviced /");
+    irq_enable(Irq::Usb1);
 }
 
 fn endpoint0_complete() {
