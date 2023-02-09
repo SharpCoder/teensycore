@@ -20,7 +20,7 @@ pub struct Buffer<const SIZE: usize, T> {
 
 impl<const SIZE: usize, T: Copy> Stack<T> for Buffer<SIZE, T> {
     fn push(&mut self, item: T) {
-        if self.tail == SIZE {
+        if self.tail == (SIZE - 1) {
             // Discard the data. we are buffer oerflow.
             return;
         }
