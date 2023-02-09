@@ -1,8 +1,6 @@
 use crate::{
-    arm_dcache_delete,
-    debug::{blink_hardware, debug_str},
-    mem,
-    phys::{addrs::USB, pins::pin_out, usb::models::*, usb::registers::*},
+    arm_dcache_delete, mem,
+    phys::{addrs::USB, usb::models::*, usb::registers::*},
     phys::{assign, read_word, usb::descriptors::*, usb::*},
     system::{
         buffer::*,
