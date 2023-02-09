@@ -1,6 +1,8 @@
 use crate::{
-    arm_dcache_delete, mem,
-    phys::{addrs::USB, usb::models::*, usb::registers::*},
+    arm_dcache_delete,
+    debug::{blink_hardware, debug_str},
+    mem,
+    phys::{addrs::USB, pins::pin_out, usb::models::*, usb::registers::*},
     phys::{assign, read_word, usb::descriptors::*, usb::*},
     system::{
         buffer::*,
@@ -189,7 +191,7 @@ pub fn usb_serial_peek() -> Option<u8> {
     }
 }
 fn tx_callback(packet: &UsbEndpointTransferDescriptor) {
-    if (packet.status & 0xFF) != 0 {
+    if (packet.status & 0x80) != 0 {
         usb_timer_oneshot();
     }
 }
@@ -213,6 +215,12 @@ pub fn usb_serial_putchar(byte: u8) {
 pub fn usb_serial_write(bytes: &[u8]) {
     unsafe {
         for byte in bytes {
+            // Buffer overflow
+            if TX_BUFFER_TRANSIENT.size() == TX_BUFFER_SIZE {
+                // Do not pass go. Do not begin any timers.
+                return;
+            }
+
             TX_BUFFER_TRANSIENT.push(*byte);
         }
     }
@@ -244,7 +252,15 @@ pub fn usb_serial_flush() -> u32 {
 
         // Check for error condition
         if (dtd.status & 0xFF) > 0 {
-            return 0;
+            // This is actually kinda ok probably.
+            // Some data may have been lost, idk, but
+            // You can keep going and it'll magically
+            // fix itself.
+
+            // Returning zero on the other hand seems
+            // to brick it because the error persists
+            // until you prepare another queue.
+            // return 0;
         }
 
         // Copy the data.
