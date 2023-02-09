@@ -62,12 +62,6 @@ fn handle_irq(irq_status: u32) {
 
 fn usb_serial_configure(packet: SetupPacket) {
     match packet.bm_request_and_type {
-        0x2221 => {
-            // The device is now present? Seems like an ok indicator for configured.
-            unsafe {
-                CONFIGURED = true;
-            }
-        }
         // SET_CONFIGURATION packet
         0x900 => {
             // Configure the endpoints.
@@ -118,6 +112,11 @@ fn usb_serial_configure(packet: SetupPacket) {
             assign(USB + 0x80, 0x0003E7); // 1ms 0x0003E7
             assign(USBINTR, read_word(USBINTR) | TI0);
             assign(USB + 0x84, (1 << 31) | (1 << 30));
+
+            // Open the flood gates.
+            unsafe {
+                CONFIGURED = true;
+            }
         }
         _ => {
             // Do nothing
@@ -213,15 +212,10 @@ pub fn usb_serial_putchar(byte: u8) {
 pub fn usb_serial_write(bytes: &[u8]) {
     unsafe {
         for byte in bytes {
-            // Buffer overflow
-            if TX_BUFFER_TRANSIENT.size() == TX_BUFFER_SIZE {
-                // Do not pass go. Do not begin any timers.
-                return;
-            }
-
             TX_BUFFER_TRANSIENT.push(*byte);
         }
     }
+
     usb_timer_oneshot();
 }
 
@@ -234,16 +228,15 @@ pub fn usb_serial_write(bytes: &[u8]) {
 ///
 /// Returns how many bytes were written.
 pub fn usb_serial_flush() -> u32 {
+    // Verify we are in a good, configured state.
+    if unsafe { CONFIGURED == false } {
+        return 0;
+    }
+
     // Prepare
     if unsafe { TX_BUFFER_TRANSIENT.size() } > 0 {
-        // Verify we are in a good, configured state.
-        if unsafe { CONFIGURED == false } {
-            return 0;
-        }
-
         let dtd = unsafe { &mut TX_DTD };
 
-        // Check if it's done
         if (dtd.status & 0x80) > 0 {
             return 0;
         }
@@ -258,6 +251,7 @@ pub fn usb_serial_flush() -> u32 {
             // Returning zero on the other hand seems
             // to brick it because the error persists
             // until you prepare another queue.
+
             // return 0;
         }
 
