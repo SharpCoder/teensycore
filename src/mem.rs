@@ -71,6 +71,26 @@ impl Mempage {
         }
     }
 
+    pub fn reclaim_fast(bytes: usize) -> *mut u32 {
+        // Iterate through mempage searching for the first candidate
+        // that is currently free.
+        unsafe {
+            let mut ptr = MEMORY_PAGES;
+            while ptr.is_some() {
+                let node = ptr.unwrap();
+                if (*node).size >= bytes && (*node).used == false {
+                    (*node).used = true;
+                    return node as *mut u32;
+                }
+                ptr = (*node).next;
+            }
+        }
+
+        loop {
+            crate::err(crate::PanicType::Memfault);
+        }
+    }
+
     /// Free the page containing this ptr
     pub fn free(ptr: u32) {
         let bytes = size_of::<Mempage>() as u32;
@@ -178,7 +198,7 @@ fn alloc_bytes(bytes: usize) -> *mut u32 {
     unsafe {
         if MEMORY_OFFSET + bytes as u32 >= MEMORY_MAXIMUM {
             IS_OVERRUN = true;
-            return Mempage::reclaim(bytes);
+            return Mempage::reclaim_fast(bytes);
         }
 
         let ptr = (OCRAM2 + MEMORY_OFFSET) as *mut u32;
