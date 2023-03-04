@@ -512,12 +512,6 @@ fn endpoint0_setup(packet: SetupPacket) {
                 }
                 None => {}
             }
-
-            // debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
-            // debug_hex(packet.w_value as u32, b"w_value");
-            // debug_hex(packet.w_index as u32, b"w_index");
-            // debug_hex(packet.w_length as u32, b"w_length");
-            // debug_str(b"didn't find descriptor");
         }
         0x500 => {
             // Set Address
@@ -570,9 +564,7 @@ fn endpoint0_setup(packet: SetupPacket) {
             endpoint0_receive(0, 0, false);
             return;
         }
-        _ => {
-            // debug_hex(packet.bm_request_and_type as u32, b"bm_request_and_type");
-        }
+        _ => {}
     }
 
     assign(ENDPTCTRL0, (1 << 16) | 1); // Stall
@@ -739,7 +731,6 @@ fn handle_usb_irq() {
     }
 
     if (irq_status & USBINT) > 0 {
-        // debug_str(b" -> [usb] USBINT");
         let mut setup_status = read_word(ENDPTSETUPSTAT);
         while setup_status > 0 {
             // Clear the setup status
