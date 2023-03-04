@@ -8,7 +8,7 @@ To properly build teensycore and any subsequent project, you'll need the followi
 
 ```bash
 # Install build tools
-sudo apt-get install gcc-arm-none-eabi jq
+sudo apt-get install build-essential gcc-arm-none-eabi jq
 
 # Configure rust
 rustup default nightly
