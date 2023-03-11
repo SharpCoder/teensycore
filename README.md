@@ -12,7 +12,7 @@ sudo apt-get install build-essential gcc-arm-none-eabi jq
 
 # Configure rust
 rustup default nightly
-rustup target add thumbv7em-none-eabi
+rustup target add thumbv7em-none-eabihf
 ```
 
 ## Usage
