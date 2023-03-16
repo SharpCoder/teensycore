@@ -197,7 +197,7 @@ fn tx_callback(packet: &UsbEndpointTransferDescriptor) {
 ///
 /// ```no_run
 /// use teensycore::usb_serial::*;
-/// usb_serial_putchar('!');
+/// usb_serial_putchar(b'!');
 /// ```
 pub fn usb_serial_putchar(byte: u8) {
     usb_serial_write(&[byte]);
