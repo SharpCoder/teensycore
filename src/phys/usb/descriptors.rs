@@ -25,8 +25,8 @@ pub struct Descriptors {
 impl Descriptors {
     pub const fn new() -> Self {
         return Descriptors {
-            vid: 0x16C0,
-            pid: 0x0483,
+            vid: 0x1209,
+            pid: 0xF314,
             descriptor_list: Vector::new(),
             class_specific_interfaces: Vector::new(),
         };
