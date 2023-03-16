@@ -7,15 +7,17 @@
 //! with teensycore properly handle memory as best they can, and offer
 //! a `drop()` method which should be invoked as soon as the variable
 //! is no longer required.
+use crate::clock::{nanos, uNano};
 use core::mem::size_of;
-use crate::clock::{uNano, nanos};
 
 #[cfg(not(feature = "testing"))]
 use crate::phys::addrs::OCRAM2;
 
+pub type UScope = uNano;
+
 const MEMORY_MAXIMUM: u32 = 0x7_FFFF; // 512kb
 const MEMORY_BEGIN_OFFSET: u32 = 0x0_0FFC; // 4kb buffer (note: it should be word aligned)
-pub static mut MEMORY_SCOPE: uNano = 0x1337; // A not-thread-safe reference to the scope memory was allocated in
+pub static mut MEMORY_SCOPE: UScope = 0x1337; // A not-thread-safe reference to the scope in which memory was allocated
 static mut MEMORY_OFFSET: u32 = MEMORY_BEGIN_OFFSET;
 static mut MEMORY_PAGES: Option<*mut Mempage> = None;
 static mut IS_OVERRUN: bool = false;
@@ -24,7 +26,7 @@ static mut IS_OVERRUN: bool = false;
 #[repr(C)]
 pub struct Mempage {
     pub size: usize,
-    pub scope: uNano,
+    pub scope: UScope,
     pub used: bool,
     pub next: Option<*mut Mempage>,
     pub ptr: *mut u32,
@@ -37,45 +39,29 @@ impl Mempage {
             size: size,
             used: true,
             ptr: ptr,
-            scope: 0,
+            scope: 0x1337,
             next: None,
         };
     }
 
-    pub fn reclaim(bytes: usize) -> *mut u32 {
-        // Iterate through mempage searching for the best candidate
-        // that is currently free.
+    pub fn ref_count() -> usize {
+        let mut count = 0;
         unsafe {
-            let mut best_ptr: Option<*mut Mempage> = None;
-            let mut best_size: usize = usize::MAX;
-
             let mut ptr = MEMORY_PAGES;
-
             while ptr.is_some() {
                 let node = ptr.unwrap();
-                if (*node).size >= bytes && best_size > (*node).size && (*node).used == false {
-                    best_ptr = Some(node);
-                    best_size = (*node).size;
+                if (*node).used == true {
+                    count += 1;
                 }
                 ptr = (*node).next;
             }
-
-            // Process the best candidate
-            match best_ptr {
-                None => {}
-                Some(node) => {
-                    (*node).used = true;
-                    return node as *mut u32;
-                }
-            }
         }
 
-        loop {
-            crate::err(crate::PanicType::Memfault);
-        }
+        return count;
     }
 
     pub fn reclaim_fast(bytes: usize) -> *mut u32 {
+        use crate::debug::*;
         // Iterate through mempage searching for the first candidate
         // that is currently free.
         unsafe {
@@ -95,21 +81,18 @@ impl Mempage {
         }
     }
 
-    pub fn reclaim_scope(scope: uNano) {
+    pub fn free_scope(scope: UScope) {
         // Iterate through mempage dropping all memory allocated with a given scope
         unsafe {
             let mut ptr = MEMORY_PAGES;
             while ptr.is_some() {
                 let node = ptr.unwrap();
-                if (*node).scope == scope {
+                if (*node).scope == scope && (*node).used == true {
                     (*node).used = false;
+                    (*node).scope = 0;
                 }
                 ptr = (*node).next;
             }
-        }
-
-        loop {
-            crate::err(crate::PanicType::Memfault);
         }
     }
 
@@ -250,31 +233,54 @@ pub fn free<T>(ptr: *mut T) {
 
 #[cfg(not(feature = "testing"))]
 #[macro_export]
+
+/// A directive for managing memory.
+///
+/// Any memory that is dynamically allocated within the critical block
+/// of this macro will be released at the end. This is extremely useful
+/// for string-based operations which may have many side effects. You
+/// don't have to fuss with drop().
+///
+/// ```no-test
+/// use teensycore::*;
+/// use teensycore::mem::*;
+///
+/// using!({
+///     let var1 = str!(b"hello!");
+///     let var2 = str!(b"world!");
+/// });
+/// ```
 macro_rules! using {
     ($x: block) => {
         {
-            let original_scope: uNano = unsafe { MEMORY_SCOPE };
-            let current_scope: uNano = nanos();
+            // Record the original scope that memory is currently being allocated against
+            // and then establish a new scope based on the line of code currently
+            // executing. With this scope, all subsequent memory will be allocated against.
+            // After executing the critical block, release all memory allocated recently
+            // and return the scope to the original.
+            let original_scope: UScope = unsafe { MEMORY_SCOPE.clone() };
+            let current_scope: UScope = crate::clock::nanos().clone();
             unsafe { MEMORY_SCOPE = current_scope };
 
             $x
 
-            unsafe { MEMORY_SCOPE = original_scope; }
-
             // Deallocate all memory in the current_scope
-            Mempage::reclaim_scope(current_scope);
+            Mempage::free_scope(current_scope);
+            unsafe { MEMORY_SCOPE = original_scope; }
         }
     }
+}
+
+pub fn ref_count() -> usize {
+    return Mempage::ref_count();
 }
 
 #[cfg(feature = "testing")]
 #[macro_export]
 macro_rules! using {
-    ($x: block) => {
-        {
-            $x
-        }
-    }
+    ($x: block) => {{
+        $x
+    }};
 }
 
 #[cfg(feature = "testing")]

@@ -1,4 +1,5 @@
 use crate::clock::uNano;
+use crate::mem::*;
 use crate::phys::pins::*;
 use crate::serio::*;
 use crate::system::vector::{Stack, Vector};
@@ -80,46 +81,65 @@ pub fn blink_custom(on_time: uNano, off_time: uNano) {
     wait_ns(off_time);
 }
 
+pub fn print_u32(val: u32) {
+    using!({
+        let mut bytes = Vector::<u8>::new();
+        let str = &mut itoa(val as u64);
+        let mut vec = str.as_vector();
+        bytes.join(&vec);
+
+        for byte in bytes.into_iter() {
+            if UART_SERIAL {
+                serial_write(SerioDevice::Debug, &[byte]);
+            }
+
+            if USB_SERIAL {
+                usb_serial_putchar(byte);
+            }
+        }
+    });
+}
+
 /// Print an f32 (with two decimal places) to Uart4
 /// With no additional modifications.
 pub fn print_f32(val: f32) {
-    let mut bytes = Vector::<u8>::new();
-    let mut num = val;
-    let negative = val < 0.0;
-    if negative {
-        num = num * -1.0;
-        bytes.push(b'-');
-    }
-
-    let major = num as u32;
-    let decimal = ((num * 100.0) as u32) - major * 100;
-
-    // Calculate the major value
-    let mut major_str = itoa(major as u64);
-    let mut major_vec = major_str.as_vector();
-
-    let mut minor_str = itoa(decimal as u64);
-    let mut minor_vec = minor_str.as_vector();
-
-    bytes.join(&major_vec);
-    bytes.push(b'.');
-    bytes.join(&minor_vec);
-
-    for byte in bytes.into_iter() {
-        if UART_SERIAL {
-            serial_write(SerioDevice::Debug, &[byte]);
+    using!({
+        let mut bytes = Vector::<u8>::new();
+        let mut num = val;
+        let negative = val < 0.0;
+        if negative {
+            num = num * -1.0;
+            bytes.push(b'-');
         }
 
-        if USB_SERIAL {
-            usb_serial_putchar(byte);
-        }
-    }
+        let major = num as u32;
+        let decimal = ((num * 100.0) as u32) - major * 100;
 
-    major_vec.free();
-    minor_vec.free();
-    major_str.drop();
-    minor_str.drop();
-    bytes.free();
+        // Calculate the major value
+        let mut major_str = itoa(major as u64);
+        let mut major_vec = major_str.as_vector();
+
+        let mut minor_str = itoa(decimal as u64);
+        let mut minor_vec = minor_str.as_vector();
+
+        if minor_vec.size() == 1 {
+            minor_vec.push(b'0');
+        }
+
+        bytes.join(&major_vec);
+        bytes.push(b'.');
+        bytes.join(&minor_vec);
+
+        for byte in bytes.into_iter() {
+            if UART_SERIAL {
+                serial_write(SerioDevice::Debug, &[byte]);
+            }
+
+            if USB_SERIAL {
+                usb_serial_putchar(byte);
+            }
+        }
+    });
 }
 
 pub fn print(message: &[u8]) {
@@ -135,110 +155,108 @@ pub fn print(message: &[u8]) {
 /// Write out a u32, in hex format, along with a string of data
 /// to Uart4. This is useful for debugging memory addresses.
 pub fn debug_binary(hex: u32, message: &[u8]) {
-    let mut bytes = Vector::<u8>::new();
-    bytes.push(b'0');
-    bytes.push(b'b');
+    using!({
+        let mut bytes = Vector::<u8>::new();
+        bytes.push(b'0');
+        bytes.push(b'b');
 
-    let str = &mut itob(hex as u64, 2);
-    let mut vec = str.as_vector();
-    bytes.join(&vec);
-    bytes.push(b' ');
+        let str = &mut itob(hex as u64, 2);
+        let mut vec = str.as_vector();
+        bytes.join(&vec);
+        bytes.push(b' ');
 
-    for byte in bytes.into_iter() {
-        if UART_SERIAL {
-            serial_write(SerioDevice::Debug, &[byte]);
+        for byte in bytes.into_iter() {
+            if UART_SERIAL {
+                serial_write(SerioDevice::Debug, &[byte]);
+            }
+
+            if USB_SERIAL {
+                usb_serial_putchar(byte);
+            }
         }
 
-        if USB_SERIAL {
-            usb_serial_putchar(byte);
-        }
-    }
-
-    debug_str(message);
-
-    bytes.free();
-    vec.free();
-    str.drop();
+        debug_str(message);
+    });
 }
 
 /// Write out a u32, in hex format, along with a string of data
 /// to Uart4. This is useful for debugging memory addresses.
 pub fn debug_hex(hex: u32, message: &[u8]) {
-    let mut bytes = Vector::<u8>::new();
-    bytes.push(b'0');
-    bytes.push(b'x');
+    using!({
+        let mut bytes = Vector::<u8>::new();
+        bytes.push(b'0');
+        bytes.push(b'x');
 
-    let str = &mut itob(hex as u64, 16);
-    let mut vec = str.as_vector();
-    bytes.join(&vec);
-    bytes.push(b' ');
+        let str = &mut itob(hex as u64, 16);
+        let mut vec = str.as_vector();
+        bytes.join(&vec);
+        bytes.push(b' ');
 
-    for byte in bytes.into_iter() {
-        if UART_SERIAL {
-            serial_write(SerioDevice::Debug, &[byte]);
+        for byte in bytes.into_iter() {
+            if UART_SERIAL {
+                serial_write(SerioDevice::Debug, &[byte]);
+            }
+
+            if USB_SERIAL {
+                usb_serial_putchar(byte);
+            }
         }
 
-        if USB_SERIAL {
-            usb_serial_putchar(byte);
-        }
-    }
-
-    debug_str(message);
-
-    bytes.free();
-    vec.free();
-    str.drop();
+        debug_str(message);
+    });
 }
 
 /// Write out a u64 number and a string of data to Uart4
 pub fn debug_u64(val: u64, message: &[u8]) {
-    let mut bytes = Vector::<u8>::new();
-    let str = &mut itoa(val);
-    let mut vec = str.as_vector();
-    bytes.join(&vec);
-    bytes.push(b' ');
+    using!({
+        let mut bytes = Vector::<u8>::new();
+        let str = &mut itoa(val);
+        let mut vec = str.as_vector();
+        bytes.join(&vec);
+        bytes.push(b' ');
 
-    for byte in bytes.into_iter() {
-        if UART_SERIAL {
-            serial_write(SerioDevice::Debug, &[byte]);
+        for byte in bytes.into_iter() {
+            if UART_SERIAL {
+                serial_write(SerioDevice::Debug, &[byte]);
+            }
+
+            if USB_SERIAL {
+                usb_serial_putchar(byte);
+            }
         }
 
-        if USB_SERIAL {
-            usb_serial_putchar(byte);
-        }
-    }
-
-    debug_str(message);
-
-    bytes.free();
-    vec.free();
-    str.drop();
+        debug_str(message);
+    });
 }
 
 /// Write out an f32 (with two decimal places) to Uart4
 pub fn debug_f32(val: f32, message: &[u8]) {
-    // Calculate the major value
-    print_f32(val);
+    using!({
+        // Calculate the major value
+        print_f32(val);
 
-    if UART_SERIAL {
-        serial_write(SerioDevice::Debug, b" ");
-    }
-    if USB_SERIAL {
-        usb_serial_putchar(b' ');
-    }
+        if UART_SERIAL {
+            serial_write(SerioDevice::Debug, b" ");
+        }
+        if USB_SERIAL {
+            usb_serial_putchar(b' ');
+        }
 
-    debug_str(message);
+        debug_str(message);
+    });
 }
 
 /// Write out a string of data to Uart4
 pub fn debug_str(message: &[u8]) {
-    if UART_SERIAL {
-        serial_write(SerioDevice::Debug, message);
-        serial_write(SerioDevice::Debug, b"\n");
-    }
+    using!({
+        if UART_SERIAL {
+            serial_write(SerioDevice::Debug, message);
+            serial_write(SerioDevice::Debug, b"\n");
+        }
 
-    if USB_SERIAL {
-        usb_serial_write(message);
-        usb_serial_write(b"\n");
-    }
+        if USB_SERIAL {
+            usb_serial_write(message);
+            usb_serial_write(b"\n");
+        }
+    });
 }
