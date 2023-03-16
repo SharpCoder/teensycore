@@ -8,12 +8,14 @@
 //! a `drop()` method which should be invoked as soon as the variable
 //! is no longer required.
 use core::mem::size_of;
+use crate::clock::{uNano, nanos};
 
 #[cfg(not(feature = "testing"))]
 use crate::phys::addrs::OCRAM2;
 
 const MEMORY_MAXIMUM: u32 = 0x7_FFFF; // 512kb
 const MEMORY_BEGIN_OFFSET: u32 = 0x0_0FFC; // 4kb buffer (note: it should be word aligned)
+pub static mut MEMORY_SCOPE: uNano = 0x1337; // A not-thread-safe reference to the scope memory was allocated in
 static mut MEMORY_OFFSET: u32 = MEMORY_BEGIN_OFFSET;
 static mut MEMORY_PAGES: Option<*mut Mempage> = None;
 static mut IS_OVERRUN: bool = false;
@@ -22,6 +24,7 @@ static mut IS_OVERRUN: bool = false;
 #[repr(C)]
 pub struct Mempage {
     pub size: usize,
+    pub scope: uNano,
     pub used: bool,
     pub next: Option<*mut Mempage>,
     pub ptr: *mut u32,
@@ -34,6 +37,7 @@ impl Mempage {
             size: size,
             used: true,
             ptr: ptr,
+            scope: 0,
             next: None,
         };
     }
@@ -91,6 +95,24 @@ impl Mempage {
         }
     }
 
+    pub fn reclaim_scope(scope: uNano) {
+        // Iterate through mempage dropping all memory allocated with a given scope
+        unsafe {
+            let mut ptr = MEMORY_PAGES;
+            while ptr.is_some() {
+                let node = ptr.unwrap();
+                if (*node).scope == scope {
+                    (*node).used = false;
+                }
+                ptr = (*node).next;
+            }
+        }
+
+        loop {
+            crate::err(crate::PanicType::Memfault);
+        }
+    }
+
     /// Free the page containing this ptr
     pub fn free(ptr: u32) {
         let bytes = size_of::<Mempage>() as u32;
@@ -125,6 +147,7 @@ impl Mempage {
                 size: total_bytes,
                 ptr: item_ptr as *mut u32,
                 used: true,
+                scope: MEMORY_SCOPE,
                 next: None,
             };
 
@@ -223,6 +246,35 @@ pub fn alloc<T>() -> *mut T {
 pub fn free<T>(ptr: *mut T) {
     let zero_ptr = ptr as u32;
     Mempage::free(zero_ptr);
+}
+
+#[cfg(not(feature = "testing"))]
+#[macro_export]
+macro_rules! using {
+    ($x: block) => {
+        {
+            let original_scope: uNano = unsafe { MEMORY_SCOPE };
+            let current_scope: uNano = nanos();
+            unsafe { MEMORY_SCOPE = current_scope };
+
+            $x
+
+            unsafe { MEMORY_SCOPE = original_scope; }
+
+            // Deallocate all memory in the current_scope
+            Mempage::reclaim_scope(current_scope);
+        }
+    }
+}
+
+#[cfg(feature = "testing")]
+#[macro_export]
+macro_rules! using {
+    ($x: block) => {
+        {
+            $x
+        }
+    }
 }
 
 #[cfg(feature = "testing")]
