@@ -25,6 +25,7 @@ pub mod i2c;
 pub mod math;
 pub mod mem;
 pub mod phys;
+pub mod prelude;
 pub mod serio;
 pub mod system;
 pub mod usb_serial;
@@ -80,18 +81,7 @@ pub const MICRO_TO_NANO: uNano = 1000;
 #[macro_export]
 macro_rules! main {
     ($app_code: block) => {
-        use teensycore::clock::*;
-        use teensycore::i2c::*;
-        use teensycore::mem::*;
-        use teensycore::phys::analog::*;
-        use teensycore::phys::irq::*;
-        use teensycore::phys::pins::*;
-        use teensycore::phys::usb::*;
-        use teensycore::phys::*;
-        use teensycore::serio::*;
-        use teensycore::system::map::*;
-        use teensycore::usb_serial::*;
-        use teensycore::*;
+        use teensycore::prelude::*;
 
         pub static mut GATES: BTreeMap<u32, u32> = BTreeMap { root: None };
 
