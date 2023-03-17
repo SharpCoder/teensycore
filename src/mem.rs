@@ -12,8 +12,12 @@ use core::mem::size_of;
 #[cfg(not(feature = "testing"))]
 use crate::phys::addrs::OCRAM2;
 
-const MEMORY_MAXIMUM: u32 = 0x7_FFFF; // 512kb
-const MEMORY_BEGIN_OFFSET: u32 = 0x0_0FFC; // 4kb buffer (note: it should be word aligned)
+pub type ScopeUnit = u32;
+
+const MEMORY_MINIMUM: u32 = 0x0_0FFC;
+const MEMORY_MAXIMUM: u32 = 0x7_FFFF - 0x0_0FFC; // 512kb - 4kb buffer
+const MEMORY_BEGIN_OFFSET: u32 = MEMORY_MINIMUM; // 4kb buffer (note: it should be word aligned)
+pub static mut MEMORY_SCOPE: ScopeUnit = 0x1337; // A not-thread-safe reference to the scope in which memory was allocated
 static mut MEMORY_OFFSET: u32 = MEMORY_BEGIN_OFFSET;
 static mut MEMORY_PAGES: Option<*mut Mempage> = None;
 static mut IS_OVERRUN: bool = false;
@@ -22,6 +26,7 @@ static mut IS_OVERRUN: bool = false;
 #[repr(C)]
 pub struct Mempage {
     pub size: usize,
+    pub scope: ScopeUnit,
     pub used: bool,
     pub next: Option<*mut Mempage>,
     pub ptr: *mut u32,
@@ -34,52 +39,41 @@ impl Mempage {
             size: size,
             used: true,
             ptr: ptr,
+            scope: 0x1337,
             next: None,
         };
     }
 
-    pub fn reclaim(bytes: usize) -> *mut u32 {
-        // Iterate through mempage searching for the best candidate
-        // that is currently free.
+    /// Returns how many blocks of memory are actively allocated.
+    pub fn ref_count() -> usize {
+        let mut count = 0;
         unsafe {
-            let mut best_ptr: Option<*mut Mempage> = None;
-            let mut best_size: usize = usize::MAX;
-
             let mut ptr = MEMORY_PAGES;
-
             while ptr.is_some() {
                 let node = ptr.unwrap();
-                if (*node).size >= bytes && best_size > (*node).size && (*node).used == false {
-                    best_ptr = Some(node);
-                    best_size = (*node).size;
+                if (*node).used == true {
+                    count += 1;
                 }
                 ptr = (*node).next;
             }
-
-            // Process the best candidate
-            match best_ptr {
-                None => {}
-                Some(node) => {
-                    (*node).used = true;
-                    return node as *mut u32;
-                }
-            }
         }
 
-        loop {
-            crate::err(crate::PanicType::Memfault);
-        }
+        return count;
     }
 
+    /// Returns the next available block of memory that
+    /// will fit some arbitrary amount of bytes.
     pub fn reclaim_fast(bytes: usize) -> *mut u32 {
         // Iterate through mempage searching for the first candidate
         // that is currently free.
         unsafe {
             let mut ptr = MEMORY_PAGES;
+
             while ptr.is_some() {
                 let node = ptr.unwrap();
                 if (*node).size >= bytes && (*node).used == false {
                     (*node).used = true;
+                    (*node).scope = MEMORY_SCOPE;
                     return node as *mut u32;
                 }
                 ptr = (*node).next;
@@ -88,6 +82,21 @@ impl Mempage {
 
         loop {
             crate::err(crate::PanicType::Memfault);
+        }
+    }
+
+    /// Release all memory that was allocated with a given scope.
+    pub fn free_scope(scope: ScopeUnit) {
+        // Iterate through mempage dropping all memory allocated with a given scope
+        unsafe {
+            let mut ptr = MEMORY_PAGES;
+            while ptr.is_some() {
+                let node = ptr.unwrap();
+                if (*node).scope == scope && (*node).used == true {
+                    Mempage::free((*node).ptr as u32);
+                }
+                ptr = (*node).next;
+            }
         }
     }
 
@@ -125,6 +134,7 @@ impl Mempage {
                 size: total_bytes,
                 ptr: item_ptr as *mut u32,
                 used: true,
+                scope: MEMORY_SCOPE,
                 next: None,
             };
 
@@ -198,6 +208,7 @@ fn alloc_bytes(bytes: usize) -> *mut u32 {
     unsafe {
         if MEMORY_OFFSET + bytes as u32 >= MEMORY_MAXIMUM {
             IS_OVERRUN = true;
+            // return Mempage::reclaim(bytes);
             return Mempage::reclaim_fast(bytes);
         }
 
@@ -223,6 +234,58 @@ pub fn alloc<T>() -> *mut T {
 pub fn free<T>(ptr: *mut T) {
     let zero_ptr = ptr as u32;
     Mempage::free(zero_ptr);
+}
+
+#[cfg(not(feature = "testing"))]
+#[macro_export]
+
+/// A directive for managing memory.
+///
+/// Any memory that is dynamically allocated within the critical block
+/// of this macro will be released at the end. This is extremely useful
+/// for string-based operations which may have many side effects. You
+/// don't have to fuss with drop().
+///
+/// ```no-test
+/// use teensycore::*;
+/// use teensycore::mem::*;
+///
+/// using!({
+///     let var1 = str!(b"hello!");
+///     let var2 = str!(b"world!");
+/// });
+/// ```
+macro_rules! using {
+    ($x: block) => {
+        {
+            // Record the original scope that memory is currently being allocated against
+            // and then establish a new scope based on the line of code currently
+            // executing. With this scope, all subsequent memory will be allocated against.
+            // After executing the critical block, release all memory allocated recently
+            // and return the scope to the original.
+            let original_scope: ScopeUnit = unsafe { MEMORY_SCOPE.clone() };
+            let current_scope: ScopeUnit = crate::code_hash();
+            unsafe { MEMORY_SCOPE = current_scope };
+
+            $x
+
+            // Deallocate all memory in the current_scope
+            Mempage::free_scope(current_scope);
+            unsafe { MEMORY_SCOPE = original_scope; }
+        }
+    }
+}
+
+pub fn ref_count() -> usize {
+    return Mempage::ref_count();
+}
+
+#[cfg(feature = "testing")]
+#[macro_export]
+macro_rules! using {
+    ($x: block) => {{
+        $x
+    }};
 }
 
 #[cfg(feature = "testing")]
