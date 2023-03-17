@@ -276,8 +276,14 @@ macro_rules! using {
     }
 }
 
+#[cfg(not(feature = "testing"))]
 pub fn ref_count() -> usize {
     return Mempage::ref_count();
+}
+
+#[cfg(feature = "testing")]
+pub fn ref_count() -> usize {
+    return 0;
 }
 
 #[cfg(feature = "testing")]
