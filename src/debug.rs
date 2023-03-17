@@ -85,7 +85,7 @@ pub fn print_u32(val: u32) {
     using!({
         let mut bytes = Vector::<u8>::new();
         let str = &mut itoa(val as u64);
-        let mut vec = str.as_vector();
+        let vec = str.as_vector();
         bytes.join(&vec);
 
         for byte in bytes.into_iter() {
@@ -116,10 +116,10 @@ pub fn print_f32(val: f32) {
         let decimal = ((num * 100.0) as u32) - major * 100;
 
         // Calculate the major value
-        let mut major_str = itoa(major as u64);
-        let mut major_vec = major_str.as_vector();
+        let major_str = itoa(major as u64);
+        let major_vec = major_str.as_vector();
 
-        let mut minor_str = itoa(decimal as u64);
+        let minor_str = itoa(decimal as u64);
         let mut minor_vec = minor_str.as_vector();
 
         if minor_vec.size() == 1 {
@@ -161,7 +161,7 @@ pub fn debug_binary(hex: u32, message: &[u8]) {
         bytes.push(b'b');
 
         let str = &mut itob(hex as u64, 2);
-        let mut vec = str.as_vector();
+        let vec = str.as_vector();
         bytes.join(&vec);
         bytes.push(b' ');
 
@@ -188,7 +188,7 @@ pub fn debug_hex(hex: u32, message: &[u8]) {
         bytes.push(b'x');
 
         let str = &mut itob(hex as u64, 16);
-        let mut vec = str.as_vector();
+        let vec = str.as_vector();
         bytes.join(&vec);
         bytes.push(b' ');
 
@@ -211,7 +211,7 @@ pub fn debug_u64(val: u64, message: &[u8]) {
     using!({
         let mut bytes = Vector::<u8>::new();
         let str = &mut itoa(val);
-        let mut vec = str.as_vector();
+        let vec = str.as_vector();
         bytes.join(&vec);
         bytes.push(b' ');
 

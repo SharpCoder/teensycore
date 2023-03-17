@@ -7,17 +7,17 @@
 //! with teensycore properly handle memory as best they can, and offer
 //! a `drop()` method which should be invoked as soon as the variable
 //! is no longer required.
-use crate::clock::{nanos, uNano};
 use core::mem::size_of;
 
 #[cfg(not(feature = "testing"))]
 use crate::phys::addrs::OCRAM2;
 
-pub type UScope = uNano;
+pub type ScopeUnit = u32;
 
-const MEMORY_MAXIMUM: u32 = 0x7_FFFF; // 512kb
-const MEMORY_BEGIN_OFFSET: u32 = 0x0_0FFC; // 4kb buffer (note: it should be word aligned)
-pub static mut MEMORY_SCOPE: UScope = 0x1337; // A not-thread-safe reference to the scope in which memory was allocated
+const MEMORY_MINIMUM: u32 = 0x0_0FFC;
+const MEMORY_MAXIMUM: u32 = 0x7_FFFF - 0x0_0FFC; // 512kb - 4kb buffer
+const MEMORY_BEGIN_OFFSET: u32 = MEMORY_MINIMUM; // 4kb buffer (note: it should be word aligned)
+pub static mut MEMORY_SCOPE: ScopeUnit = 0x1337; // A not-thread-safe reference to the scope in which memory was allocated
 static mut MEMORY_OFFSET: u32 = MEMORY_BEGIN_OFFSET;
 static mut MEMORY_PAGES: Option<*mut Mempage> = None;
 static mut IS_OVERRUN: bool = false;
@@ -26,7 +26,7 @@ static mut IS_OVERRUN: bool = false;
 #[repr(C)]
 pub struct Mempage {
     pub size: usize,
-    pub scope: UScope,
+    pub scope: ScopeUnit,
     pub used: bool,
     pub next: Option<*mut Mempage>,
     pub ptr: *mut u32,
@@ -44,6 +44,7 @@ impl Mempage {
         };
     }
 
+    /// Returns how many blocks of memory are actively allocated.
     pub fn ref_count() -> usize {
         let mut count = 0;
         unsafe {
@@ -60,16 +61,19 @@ impl Mempage {
         return count;
     }
 
+    /// Returns the next available block of memory that
+    /// will fit some arbitrary amount of bytes.
     pub fn reclaim_fast(bytes: usize) -> *mut u32 {
-        use crate::debug::*;
         // Iterate through mempage searching for the first candidate
         // that is currently free.
         unsafe {
             let mut ptr = MEMORY_PAGES;
+
             while ptr.is_some() {
                 let node = ptr.unwrap();
                 if (*node).size >= bytes && (*node).used == false {
                     (*node).used = true;
+                    (*node).scope = MEMORY_SCOPE;
                     return node as *mut u32;
                 }
                 ptr = (*node).next;
@@ -81,15 +85,15 @@ impl Mempage {
         }
     }
 
-    pub fn free_scope(scope: UScope) {
+    /// Release all memory that was allocated with a given scope.
+    pub fn free_scope(scope: ScopeUnit) {
         // Iterate through mempage dropping all memory allocated with a given scope
         unsafe {
             let mut ptr = MEMORY_PAGES;
             while ptr.is_some() {
                 let node = ptr.unwrap();
                 if (*node).scope == scope && (*node).used == true {
-                    (*node).used = false;
-                    (*node).scope = 0;
+                    Mempage::free((*node).ptr as u32);
                 }
                 ptr = (*node).next;
             }
@@ -204,6 +208,7 @@ fn alloc_bytes(bytes: usize) -> *mut u32 {
     unsafe {
         if MEMORY_OFFSET + bytes as u32 >= MEMORY_MAXIMUM {
             IS_OVERRUN = true;
+            // return Mempage::reclaim(bytes);
             return Mempage::reclaim_fast(bytes);
         }
 
@@ -258,8 +263,8 @@ macro_rules! using {
             // executing. With this scope, all subsequent memory will be allocated against.
             // After executing the critical block, release all memory allocated recently
             // and return the scope to the original.
-            let original_scope: UScope = unsafe { MEMORY_SCOPE.clone() };
-            let current_scope: UScope = crate::clock::nanos().clone();
+            let original_scope: ScopeUnit = unsafe { MEMORY_SCOPE.clone() };
+            let current_scope: ScopeUnit = crate::code_hash();
             unsafe { MEMORY_SCOPE = current_scope };
 
             $x
