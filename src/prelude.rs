@@ -6,7 +6,7 @@ pub use crate::{
     mem::*,
     phys::{analog::*, irq::*, pins::*, usb::*, *},
     serio::*,
-    system::{buffer::*, map::*, str::*, strings::*, vector::*},
+    system::{buffer::*, map::*, str::*, vector::*},
     usb_serial::*,
     *,
 };
