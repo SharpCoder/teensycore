@@ -1,19 +1,19 @@
 //! This module provides access to controlling discreet pins
 //! over gpio.
-//! 
+//!
 //! Typically you need to configure the pin first, and then
 //! interact with it. The following example will configure
 //! pin 13 as an output and provide power to it:
-//! 
+//!
 //! ```no_run
 //! use teensycore::phys::pins::*;
-//! 
+//!
 //! pin_mode(13, Mode::Output);
 //! pin_out(13, Power::High);
 //! ```
 use crate::phys::addrs;
-use crate::phys::*;
 use crate::phys::gpio::*;
+use crate::phys::*;
 
 /// The mode indicating whether a pin is an Input or an Output
 pub enum Mode {
@@ -28,8 +28,8 @@ pub enum Power {
     Low,
 }
 
-/// The gpio pad mux configuration. 
-/// 
+/// The gpio pad mux configuration.
+///
 /// On the IMXRT, each gpio slot can be reconfigured to point
 /// to a different peripheral. This enum defines which peripheral
 /// is active. Follow the IMXRT documentation for specifics
@@ -43,7 +43,7 @@ pub enum Alt {
     Alt5 = 0x5,
 }
 
-/// Whether the pin will have a pull-down resistor or 
+/// Whether the pin will have a pull-down resistor or
 /// a pull-up resistor.
 pub enum PullUpDown {
     PullDown100k = 0x00,
@@ -76,77 +76,128 @@ pub enum DriveStrength {
 }
 
 pub struct PadConfig {
-
     /// The hysteresis (HYS) bit controls whether a pin acts as a Schmitt trigger, which is a comparator remembering its last input state (hysteresis)
-    pub hysterisis: bool,               // HYS
+    pub hysterisis: bool, // HYS
     /// Controls signals to select pull-up or pull-down internal resistance strength
-    pub resistance: PullUpDown,         // PUS
+    pub resistance: PullUpDown, // PUS
     /// Control signal to enable internal pull-up/down resistors or pad keeper functionality.
-    pub pull_keep: PullKeep,            // PUE
+    pub pull_keep: PullKeep, // PUE
     /// Enables or disables the pull up/down resistor
-    pub pull_keep_en: bool,             // PKE
+    pub pull_keep_en: bool, // PKE
     /// If set to 1, the output driver drives only logic 0. The drain of the internal transistor is open. It means that logic 1 has to be driven by an external component. This option is essential if connection between the pad and an external component is bi-directional.
-    pub open_drain: bool,               // ODE
+    pub open_drain: bool, // ODE
     ///  These options can either increase the output driver current in the higher frequency range, or reduce the switching noise in the lower frequency range.
-    pub speed: PinSpeed,                // SPEED
+    pub speed: PinSpeed, // SPEED
     /// Resistance between output and load
-    pub drive_strength: DriveStrength,  // DSE
+    pub drive_strength: DriveStrength, // DSE
     /// This bitfield controls how fast the pin toggles between the two logic states. Since rapidly changing states consume more power and generate spikes, it should be enabled only when necessary
-    pub fast_slew_rate: bool,           // SRE
+    pub fast_slew_rate: bool, // SRE
 }
 
 /** The index is an arduino pin, the output is the teensy 4.0 bit */
 const PIN_BITS: [u8; 40] = [
-    3, 2, 4, 5, 6, 8, 10, 17, 
-    16, 11, 0, 2, 1, 3, 18, 19, 
-    23, 22, 17, 16, 26, 27, 24, 25, 
-    12, 13, 30, 31, 18, 31, 23, 
-    22, 12, 7, 15, 14, 13, 12, 17, 16,
+    3, 2, 4, 5, 6, 8, 10, 17, 16, 11, 0, 2, 1, 3, 18, 19, 23, 22, 17, 16, 26, 27, 24, 25, 12, 13,
+    30, 31, 18, 31, 23, 22, 12, 7, 15, 14, 13, 12, 17, 16,
 ];
 
 /** The index is an arduino pin, the output is the gpio pin that controls it */
 const PIN_TO_GPIO_PIN: [Pin; 40] = [
-    Pin::Gpio6, Pin::Gpio6, Pin::Gpio9, Pin::Gpio9, Pin::Gpio9, Pin::Gpio9, Pin::Gpio7, Pin::Gpio7,
-    Pin::Gpio7, Pin::Gpio7, Pin::Gpio7, Pin::Gpio7, Pin::Gpio7, Pin::Gpio7, Pin::Gpio6, Pin::Gpio6,
-    Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6,
-    Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio6, Pin::Gpio8, Pin::Gpio9, Pin::Gpio8, Pin::Gpio8,
-    Pin::Gpio7, Pin::Gpio9, Pin::Gpio8, Pin::Gpio8, Pin::Gpio8, Pin::Gpio8, Pin::Gpio8, Pin::Gpio8,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio9,
+    Pin::Gpio9,
+    Pin::Gpio9,
+    Pin::Gpio9,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio7,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio6,
+    Pin::Gpio8,
+    Pin::Gpio9,
+    Pin::Gpio8,
+    Pin::Gpio8,
+    Pin::Gpio7,
+    Pin::Gpio9,
+    Pin::Gpio8,
+    Pin::Gpio8,
+    Pin::Gpio8,
+    Pin::Gpio8,
+    Pin::Gpio8,
+    Pin::Gpio8,
 ];
 
 /** The index is an arduino pin, the output is the IOMUX register which controls it */
-const PIN_MUX: [u32;  40] = [
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_03, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_02,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_04, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_05,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_06, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_08,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_01,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_00, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_02,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_01, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_03,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_02, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_03,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_07, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_06,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_01, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_00,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_10, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_11,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_08, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_09,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_14, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_15,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_32, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_31,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_37, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_36,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_07,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_03, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_02,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_01, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_00,
-    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_05, addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_04,
+const PIN_MUX: [u32; 40] = [
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_03,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_02,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_04,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_05,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_06,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_08,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_10,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_01,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B1_00,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_11,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_00,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_02,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_01,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_03,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_02,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_03,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_07,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_06,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_01,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_00,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_10,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_11,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_08,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_09,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_14,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B1_15,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_32,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_31,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_37,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_36,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_B0_12,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_07,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_03,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_02,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_01,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_00,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_05,
+    addrs::IOMUXC_SW_MUX_CTL_PAD_GPIO_SD_B0_04,
 ];
-
 
 /// Reconfigure the pad which a particular gpio pin is
 /// using.
 pub fn pin_mux_config(pin: usize, alt: Alt) {
     let addr = PIN_MUX[pin];
-    assign(addr, (read_word(addr) & !0x7) | alt as u32);
+    // assign(addr, (read_word(addr) & !0x7) | alt as u32);
+    assign(addr, (1 << 4) | alt as u32);
 }
 
 /// Configure all aspects of the pad.
-/// 
+///
 /// This includes the speed, the resistance, the drive strength,
 /// enabling hysterisis, and more.
 pub fn pin_pad_config(pin: usize, config: PadConfig) {
@@ -171,14 +222,14 @@ pub fn pin_pad_config(pin: usize, config: PadConfig) {
 pub fn pin_mode(pin: usize, mode: Mode) {
     gpio_speed(&PIN_TO_GPIO_PIN[pin], MuxSpeed::Fast);
     // gpio_clear(&PIN_TO_GPIO_PIN[pin], 0x1 << PIN_BITS[pin]);
-    // Mux control pad
 
+    // Mux control pad
     match mode {
         Mode::Output => {
             // Make sure the pad is not overridden to be input
             // assign(PIN_MUX[pin], read_word(PIN_MUX[pin]) & !(0x1 << 4));
             gpio_direction(&PIN_TO_GPIO_PIN[pin], PIN_BITS[pin] as u32, Dir::Output);
-        },
+        }
         Mode::Input => {
             // Mux the pad so it is overridden to be input
             // assign(PIN_MUX[pin], read_word(PIN_MUX[pin]) | (0x1 << 4));
@@ -193,7 +244,7 @@ pub fn pin_out(pin: usize, power: Power) {
     match power {
         Power::High => {
             gpio_set(&PIN_TO_GPIO_PIN[pin], mask);
-        },
+        }
         Power::Low => {
             gpio_clear(&PIN_TO_GPIO_PIN[pin], mask);
         }
