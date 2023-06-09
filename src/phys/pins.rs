@@ -201,9 +201,9 @@ pub fn pin_mux_config(pin: usize, alt: Alt) {
 /// This includes the speed, the resistance, the drive strength,
 /// enabling hysterisis, and more.
 pub fn pin_pad_config(pin: usize, config: PadConfig) {
-    // -0x1F0 appears to universally be the difference
+    // 0x1F0 appears to universally be the difference
     // between the MUX_CTRL_PAD and the PAD_CTRL_PAD
-    let addr = PIN_MUX[pin] - 0x1F0;
+    let addr = PIN_MUX[pin] + 0x1F0;
     let mut value = 0x0;
 
     value = value | ((0x1 & config.fast_slew_rate as u32) << 0);
