@@ -24,8 +24,8 @@ pub enum Mode {
 /// The signal used to drive the pin. If it is HIGH the pin
 /// will receive power. If it is low, the pin will be grounded.
 pub enum Power {
-    High,
-    Low,
+    High = 0x1,
+    Low = 0x0,
 }
 
 /// The gpio pad mux configuration.
@@ -45,6 +45,7 @@ pub enum Alt {
 
 /// Whether the pin will have a pull-down resistor or
 /// a pull-up resistor.
+#[derive(Clone)]
 pub enum PullUpDown {
     PullDown100k = 0x00,
     PullUp47k = 0x01,
@@ -52,6 +53,7 @@ pub enum PullUpDown {
     PullUp22k = 0x03,
 }
 
+#[derive(Clone)]
 pub enum PinSpeed {
     Low50MHz = 0x00,
     Medium100MHz = 0x01,
@@ -59,11 +61,13 @@ pub enum PinSpeed {
     Max200MHz = 0x03,
 }
 
+#[derive(Clone)]
 pub enum PullKeep {
     Keeper = 0x00,
     Pull = 0x01,
 }
 
+#[derive(Clone)]
 pub enum DriveStrength {
     Disabled = 0x00,
     Max = 0x01,
@@ -75,6 +79,7 @@ pub enum DriveStrength {
     MaxDiv7 = 0x07,
 }
 
+#[derive(Clone)]
 pub struct PadConfig {
     /// The hysteresis (HYS) bit controls whether a pin acts as a Schmitt trigger, which is a comparator remembering its last input state (hysteresis)
     pub hysterisis: bool, // HYS
