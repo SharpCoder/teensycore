@@ -102,7 +102,6 @@ macro_rules! main {
 
                 // Setup serial
                 serial_init(SerioDevice::Default);
-                serial_init(SerioDevice::Debug);
 
                 // Enable interrupts across the system
                 enable_interrupts();

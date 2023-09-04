@@ -90,7 +90,7 @@ pub fn print_u32(val: u32) {
 
         for byte in bytes.into_iter() {
             if UART_SERIAL {
-                serial_write(SerioDevice::Debug, &[byte]);
+                serial_write(SerioDevice::Default, &[byte]);
             }
 
             if USB_SERIAL {
@@ -132,7 +132,7 @@ pub fn print_f32(val: f32) {
 
         for byte in bytes.into_iter() {
             if UART_SERIAL {
-                serial_write(SerioDevice::Debug, &[byte]);
+                serial_write(SerioDevice::Default, &[byte]);
             }
 
             if USB_SERIAL {
@@ -144,7 +144,7 @@ pub fn print_f32(val: f32) {
 
 pub fn print(message: &[u8]) {
     if UART_SERIAL {
-        serial_write(SerioDevice::Debug, message);
+        serial_write(SerioDevice::Default, message);
     }
 
     if USB_SERIAL {
@@ -167,7 +167,7 @@ pub fn debug_binary(hex: u32, message: &[u8]) {
 
         for byte in bytes.into_iter() {
             if UART_SERIAL {
-                serial_write(SerioDevice::Debug, &[byte]);
+                serial_write(SerioDevice::Default, &[byte]);
             }
 
             if USB_SERIAL {
@@ -194,7 +194,7 @@ pub fn debug_hex(hex: u32, message: &[u8]) {
 
         for byte in bytes.into_iter() {
             if UART_SERIAL {
-                serial_write(SerioDevice::Debug, &[byte]);
+                serial_write(SerioDevice::Default, &[byte]);
             }
 
             if USB_SERIAL {
@@ -217,7 +217,7 @@ pub fn debug_u64(val: u64, message: &[u8]) {
 
         for byte in bytes.into_iter() {
             if UART_SERIAL {
-                serial_write(SerioDevice::Debug, &[byte]);
+                serial_write(SerioDevice::Default, &[byte]);
             }
 
             if USB_SERIAL {
@@ -236,7 +236,7 @@ pub fn debug_f32(val: f32, message: &[u8]) {
         print_f32(val);
 
         if UART_SERIAL {
-            serial_write(SerioDevice::Debug, b" ");
+            serial_write(SerioDevice::Default, b" ");
         }
         if USB_SERIAL {
             usb_serial_putchar(b' ');
@@ -250,8 +250,8 @@ pub fn debug_f32(val: f32, message: &[u8]) {
 pub fn debug_str(message: &[u8]) {
     using!({
         if UART_SERIAL {
-            serial_write(SerioDevice::Debug, message);
-            serial_write(SerioDevice::Debug, b"\n");
+            serial_write(SerioDevice::Default, message);
+            serial_write(SerioDevice::Default, b"\n");
         }
 
         if USB_SERIAL {

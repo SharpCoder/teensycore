@@ -45,9 +45,6 @@ struct HardwareConfig {
     sel_inp_val: Option<u32>,
 }
 
-/// Enable this to mirror all bytes received
-/// to the Debug UART peripheral.
-const DEBUG_SPY: bool = false;
 static mut TEMP_BUF: [u8; 128] = [0; 128];
 const UART_WATERMARK_SIZE: u32 = 0x2;
 const UART_BUFFER_DEPTH: usize = 512; // Note: this is repeated for every uart device. Don't make it too big.
@@ -134,7 +131,6 @@ pub enum SerioDevice {
     Uart7 = 0x6,
     Uart8 = 0x7,
     Default = 0x8,
-    Debug = 0x9,
 }
 
 /**
@@ -335,12 +331,6 @@ impl Uart {
             count += 1;
         }
 
-        if DEBUG_SPY {
-            for idx in 0..count {
-                serial_write(SerioDevice::Debug, &[unsafe { TEMP_BUF[idx] }]);
-            }
-        }
-
         if rx_overrun {
             crate::debug::blink_accumulate();
         }
@@ -394,9 +384,6 @@ fn get_uart_interface(device: SerioDevice) -> &'static mut Uart {
             SerioDevice::Uart6 => &mut UART6,
             SerioDevice::Uart7 => &mut UART7,
             SerioDevice::Uart8 => &mut UART8,
-
-            // Specify debug output here
-            SerioDevice::Debug => &mut UART4,
 
             // Specify defaut here
             SerioDevice::Default => &mut UART6,
@@ -480,6 +467,8 @@ pub fn serio_handle_irq() {
     get_uart_interface(SerioDevice::Uart4).handle_irq();
     get_uart_interface(SerioDevice::Uart5).handle_irq();
     get_uart_interface(SerioDevice::Uart6).handle_irq();
+    get_uart_interface(SerioDevice::Uart7).handle_irq();
+    get_uart_interface(SerioDevice::Uart8).handle_irq();
 
     irq_enable(Irq::Uart1);
     irq_enable(Irq::Uart2);
