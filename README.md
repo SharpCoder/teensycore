@@ -40,6 +40,8 @@ Teensycore exports a convenient macro that helps to configure the entrypoint of 
 #![crate_type = "staticlib"]
 #![no_std]
 
+use teensycore::prelude::*;
+
 teensycore::main!({
     /* Application code here */
 });
@@ -64,13 +66,12 @@ The build script will generate a `.hex` file and place it in a folder called `ou
 
 Here is a very basic blinky example. To see more examples, check out the `/examples` folder.
 
-```
+```rust
 #![feature(lang_items)]
 #![crate_type = "staticlib"]
 #![no_std]
 
-use teensycore::*;
-use teensycore::phys::pins::*;
+use teensycore::prelude::*;
 
 main!({
     pin_mode(13, Mode::Output);
@@ -86,7 +87,7 @@ main!({
 
 ## Contributing
 
-This project is a work-in-progress and will be undergoing significant development over the coming months as I make it suitable for my own needs. Contributions are welcome.
+This project is a work-in-progress and will be undergoing significant development over the coming months and years as I make it suitable for my own needs. Contributions are welcome. Please open an issue if you'd like to discuss anything specific.
 
 ## License
 
