@@ -12,6 +12,7 @@
 //!  - Enable FPU
 
 #![no_std]
+#![allow(internal_features)]
 #![feature(lang_items, fn_traits)]
 #![crate_type = "staticlib"]
 
