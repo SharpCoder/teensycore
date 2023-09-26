@@ -86,6 +86,60 @@ impl I2C {
         };
     }
 
+    /// This method creates a new instance of an i2c controller.
+    /// After specifying the pins on which sda and scl lines reside,
+    /// the system will configure those pins as open-drain.
+    ///
+    /// begin_with_external_power will assume the SDA/SCL lines are already
+    /// configured with pull-up resistors and it will not provide
+    /// any power to those pins. Useful for driving lower-powered
+    /// devices.
+    ///
+    /// ```no_run
+    /// use teensycore::i2c::*;
+    /// let mut wire = I2C::begin_with_external_power(19, 18);
+    /// ```
+    pub fn begin_with_external_power(sda: usize, scl: usize) -> Self {
+        pin_pad_config(
+            sda,
+            PadConfig {
+                hysterisis: false,
+                resistance: PullUpDown::PullUp22k,
+                pull_keep: PullKeep::Keeper,
+                pull_keep_en: true,
+                open_drain: true,
+                speed: PinSpeed::Max200MHz,
+                drive_strength: DriveStrength::MaxDiv7,
+                fast_slew_rate: true,
+            },
+        );
+
+        pin_pad_config(
+            scl,
+            PadConfig {
+                hysterisis: false,
+                resistance: PullUpDown::PullUp22k,
+                pull_keep: PullKeep::Keeper,
+                pull_keep_en: true,
+                open_drain: true,
+                speed: PinSpeed::Max200MHz,
+                drive_strength: DriveStrength::MaxDiv7,
+                fast_slew_rate: true,
+            },
+        );
+
+        pin_mode(scl, Mode::Output);
+        pin_out(scl, Power::Low);
+        pin_out(sda, Power::Low);
+
+        return I2C {
+            sda_pin: sda,
+            scl_pin: scl,
+            speed: I2CSpeed::Normal100kHz,
+            debug: false,
+        };
+    }
+
     /// This method begins a new i2c transmission by sending
     /// the start condition signal and then transmitting
     /// the device select packet.
@@ -114,6 +168,9 @@ impl I2C {
         // Ack bit
         let ack = i2c_read_bit(&self);
         if ack == false {
+            if self.debug {
+                debug_str(b"received ack!!!!");
+            }
             // Success
             return true;
         } else {
@@ -270,23 +327,21 @@ impl I2C {
 }
 
 fn clock_high(i2c: &I2C) {
-    pin_mode(i2c.scl_pin, Mode::Output);
-    pin_out(i2c.scl_pin, Power::High);
+    pin_mode(i2c.scl_pin, Mode::Input);
 }
 
 fn clock_low(i2c: &I2C) {
-    pin_mode(i2c.scl_pin, Mode::Output);
     pin_out(i2c.scl_pin, Power::Low);
+    pin_mode(i2c.scl_pin, Mode::Output);
 }
 
 fn data_high(i2c: &I2C) {
-    pin_mode(i2c.sda_pin, Mode::Output);
-    pin_out(i2c.sda_pin, Power::High);
+    pin_mode(i2c.sda_pin, Mode::Input);
 }
 
 fn data_low(i2c: &I2C) {
-    pin_mode(i2c.sda_pin, Mode::Output);
     pin_out(i2c.sda_pin, Power::Low);
+    pin_mode(i2c.sda_pin, Mode::Output);
 }
 
 fn data_release(i2c: &I2C) {
@@ -325,7 +380,7 @@ fn i2c_read_bit(i2c: &I2C) -> bool {
         let clock_line = pin_read(i2c.scl_pin);
         let data_line = pin_read(i2c.sda_pin);
 
-        if clock_line == 0 {
+        if clock_line == 0 && now < timeout {
             // We are stretching the signal
             assembly!("nop");
             continue;
