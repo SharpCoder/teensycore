@@ -1,33 +1,43 @@
-/**
- *  This is a system device which keeps track of time by using the periodic timer 
- **/
+//! A top level system which keeps track of time
+//! using the onboard clock peripheral.
+
+use crate::phys::periodic_timers::*;
 use crate::phys::*;
-use crate::phys::periodic_timers::*;    
 
 #[allow(non_camel_case_types)]
 pub type uNano = u128;
 
-pub fn clock_init() {
+/**
+ * The default configured clock speed in HZ (132MHz)
+ */
+pub const F_CPU: u32 = 132000000;
 
+pub fn clock_init() {
     // Setup clock
     periodic_timers::pit_start_clock();
-    
+
     // // Undo clock gating
     assign(addrs::CCM_CCGR1, read_word(addrs::CCM_CCGR1) | (0x3 << 12));
-    
+
     // Set CTRL 0
-    pit_configure(&PeriodicTimerSource::Timer1, PITConfig {
-        chained: true,
-        irq_en: false,
-        en: false,
-    });
+    pit_configure(
+        &PeriodicTimerSource::Timer1,
+        PITConfig {
+            chained: true,
+            irq_en: false,
+            en: false,
+        },
+    );
 
     // Configure timer 0
-    pit_configure(&PeriodicTimerSource::Timer0, PITConfig {
-        chained: false,
-        irq_en: false,
-        en: false,
-    });
+    pit_configure(
+        &PeriodicTimerSource::Timer0,
+        PITConfig {
+            chained: false,
+            irq_en: false,
+            en: false,
+        },
+    );
 
     // Set maximum load value
     pit_load_value(&PeriodicTimerSource::Timer1, 0xFFFF_FFFF);
@@ -56,7 +66,7 @@ pub fn nanos() -> uNano {
     // inherently unstable, because the value could overflow.
     // This is why we are using a third-party division library
     // to do software-level division instead of relying on assembly.
-    // 
+    //
     // The end result is a perfectly accurate clock, as verified through
     // an external source (a separate arduino).
     let uptime_ticks = pit_read_lifetime() as uNano;
