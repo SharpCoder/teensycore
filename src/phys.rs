@@ -94,6 +94,7 @@ pub fn assign_bit(address: u32, op: Bitwise, value: u32) {
 
 /// Takes a memory address and performs a 4-byte read,
 /// resulting in a u32 of the current data.
+#[inline]
 pub fn read_word(address: u32) -> u32 {
     unsafe {
         return *(address as *mut u32);
