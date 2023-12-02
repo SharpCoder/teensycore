@@ -119,7 +119,7 @@ macro_rules! main {
         pub extern "C" fn eh_personality() {}
         #[panic_handler]
         #[no_mangle]
-        pub extern "C" fn my_panic(_info: &core::panic::PanicInfo) -> ! {
+        pub fn my_panic(_info: &core::panic::PanicInfo) -> ! {
             loop {}
         }
     };

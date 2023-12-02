@@ -10,7 +10,8 @@ pub type uNano = u128;
 /**
  * The default configured clock speed in HZ (132MHz)
  */
-pub const F_CPU: u32 = 132000000;
+pub const F_CPU: u32 = 396000000;
+pub const CLOCK_CPU: u32 = 132000000;
 
 pub fn clock_init() {
     // Setup clock
