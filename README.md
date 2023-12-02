@@ -30,7 +30,7 @@ crate-type = ["staticlib"]
 path = "src/lib.rs"
 
 [dependencies]
-teensycore = "^0.0.14"
+teensycore = "^0.0.15"
 ```
 
 Teensycore exports a convenient macro that helps to configure the entrypoint of your application. It takes care of the default panic handler, initializing system clocks, setting up irq, enabling debug UART, and much more. In this way, you can just focus on what your project needs to get going. Replace your `src/lib.rs` with something like this:
