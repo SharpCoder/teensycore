@@ -10,7 +10,7 @@ then
 fi
 
 # Build with cargo
-RUSTFLAGS="-C panic=abort -C opt-level=2 -C no-redzone" cargo build --target thumbv7em-none-eabihf
+RUSTFLAGS="-C panic=abort -C opt-level=2 -C no-redzone -Zcross-crate-inline-threshold=0" cargo build --target thumbv7em-none-eabihf
 
 # Extract all projects in the workspace
 # and then build them into individual hex files
